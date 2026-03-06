@@ -125,20 +125,25 @@ function RouteCircle({ routeId }) {
 
 function AlertCircle({ severity }) {
   // severity: null=loading, undefined/no entry=ok, 'info'/'normal'/'undefined'=info, 'slight'=warning, 'severe'=severe
-  let content
+  let content, borderColor
   if (severity === null) {
     content = <Loader size={18} className="text-gray-400 animate-spin" />
+    borderColor = 'border-gray-400'
   } else if (severity === 'severe') {
     content = <CircleX size={18} className="text-red-500" />
+    borderColor = 'border-red-500'
   } else if (severity === 'slight') {
     content = <TriangleAlert size={18} className="text-yellow-500" />
+    borderColor = 'border-yellow-500'
   } else if (severity && severity !== 'ok') {
     content = <Info size={18} className="text-blue-500" />
+    borderColor = 'border-blue-500'
   } else {
     content = <Smile size={18} className="text-green-500" />
+    borderColor = 'border-green-500'
   }
   return (
-    <div className="w-9 h-9 rounded-full border-2 border-black bg-white flex items-center justify-center shrink-0">
+    <div className={`w-9 h-9 rounded-full border-2 ${borderColor} bg-white flex items-center justify-center shrink-0`}>
       {content}
     </div>
   )
