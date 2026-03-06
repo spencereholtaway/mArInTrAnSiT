@@ -221,7 +221,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Mobile: full-width, pinned to top, rounded bottom corners */}
-      <div className="sm:hidden sticky top-0 z-50 bg-gradient-to-r from-lime-400 to-green-700 rounded-b-lg shadow-lg">
+      <div className="sm:hidden sticky top-0 z-50 bg-gradient-to-r from-green-700 to-lime-400 rounded-b-lg shadow-lg">
         <div className="px-6 py-2 flex items-center justify-between">
           <h1 style={{ fontFamily: 'Quintessential', fontSize: '32px' }} className="text-white m-0">
             Marin Transit
@@ -234,7 +234,7 @@ export default function Home() {
 
       {/* Tablet/Desktop: floating pill extending 20px beyond each circle edge */}
       <div className="hidden sm:block sticky top-0 z-50 pt-4 pb-2 pointer-events-none">
-        <div className="bg-gradient-to-r from-lime-400 to-green-700 rounded-full shadow-lg pointer-events-auto mx-1 md:mx-7">
+        <div className="bg-gradient-to-r from-green-700 to-lime-400 rounded-full shadow-lg pointer-events-auto mx-1 md:mx-7">
           <div className="px-5 py-2 flex items-center justify-between">
             <h1 style={{ fontFamily: 'Quintessential', fontSize: '32px' }} className="text-white m-0">
               Marin Transit
