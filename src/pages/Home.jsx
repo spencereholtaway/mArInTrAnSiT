@@ -397,8 +397,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-clip">
-      {/* Mobile: full-width, pinned to top, rounded bottom corners */}
-      <div className="sm:hidden sticky top-0 z-50 bg-gradient-to-r from-green-700 to-lime-400 rounded-b-lg shadow-lg">
+      {/* Header - full width with rounded bottom */}
+      <div className="sticky top-0 z-50 bg-gradient-to-r from-green-700 to-lime-400 rounded-b-lg shadow-lg">
         <div className="px-6 py-2 flex items-center justify-between">
           <h1 style={{ fontFamily: 'Quintessential', fontSize: '32px' }} className="text-white m-0">
             Marin Transit
@@ -410,17 +410,6 @@ export default function Home() {
       </div>
 
       <div className="px-6 md:px-12 lg:px-24">
-        {/* Tablet/Desktop: floating pill, extends 40px beyond circles on each side */}
-        <div className="hidden sm:block sticky top-0 z-50 pt-4 pb-2 -mx-10 pointer-events-none">
-          <div className="bg-gradient-to-r from-green-700 to-lime-400 rounded-full shadow-lg pointer-events-auto px-10 py-2 flex items-center justify-between">
-            <h1 style={{ fontFamily: 'Quintessential', fontSize: '32px' }} className="text-white m-0">
-              Marin Transit
-            </h1>
-            <div className="text-green-900 text-xs font-medium whitespace-nowrap">
-              {relativeTime}
-            </div>
-          </div>
-        </div>
 
         <div className="py-8 space-y-6">
           {/* Your stop panel */}
