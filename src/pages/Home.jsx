@@ -281,14 +281,6 @@ function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverrid
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
 
-  const presets = ['17', '22', '36', '61', '71'].map(routeId => {
-    const data = routeData[routeId]
-    if (!data) return null
-    const dirs = Object.keys(data.directions)
-    const stop = data.directions[dirs[0]].stops[0]
-    return { name: `${stop.name} (Rt ${routeId})`, lat: stop.lat, lng: stop.lng }
-  }).filter(Boolean)
-
   function apply() {
     const parsedLat = parseFloat(lat)
     const parsedLng = parseFloat(lng)
@@ -299,12 +291,6 @@ function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverrid
     onOverride(null)
     setLat('')
     setLng('')
-  }
-
-  function selectPreset(p) {
-    setLat(String(p.lat))
-    setLng(String(p.lng))
-    onOverride({ lat: p.lat, lng: p.lng })
   }
 
   function useDeviceLocation() {
@@ -345,21 +331,6 @@ function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverrid
         <button onClick={useDeviceLocation} className="bg-green-500 text-white px-3 py-1 rounded text-xs font-medium">
           Use Device Location
         </button>
-      </div>
-      <div className="flex gap-2 flex-wrap">
-        {presets.map(p => (
-          <button
-            key={p.name}
-            onClick={() => selectPreset(p)}
-            className={`border px-2 py-1 rounded text-xs ${
-              locationOverride?.lat === p.lat
-                ? 'border-blue-400 bg-blue-50 text-blue-700'
-                : 'border-gray-300 text-gray-500 hover:border-gray-400'
-            }`}
-          >
-            {p.name}
-          </button>
-        ))}
       </div>
       {locationOverride && (
         <div className="text-xs font-mono text-blue-500 mt-2">
