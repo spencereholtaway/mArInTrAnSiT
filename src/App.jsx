@@ -9,24 +9,6 @@ function App() {
   return (
     <Router>
       <div className="flex flex-col min-h-screen bg-gray-50">
-        {/* Navigation */}
-        <nav className="bg-white shadow">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <Link to="/" className="text-2xl font-bold text-blue-600">
-                🚌 Marin Transit
-              </Link>
-              <div className="hidden md:flex space-x-8">
-                <Link to="/" className="text-gray-700 hover:text-blue-600">Home</Link>
-                <Link to="/live-map" className="text-gray-700 hover:text-blue-600">Live Map</Link>
-                <Link to="/stop-info" className="text-gray-700 hover:text-blue-600">Stop Info</Link>
-                <Link to="/alerts" className="text-gray-700 hover:text-blue-600">Alerts</Link>
-                <Link to="/routes" className="text-gray-700 hover:text-blue-600">Routes</Link>
-              </div>
-            </div>
-          </div>
-        </nav>
-
         {/* Routes */}
         <main className="flex-1">
           <Routes>
