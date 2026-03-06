@@ -499,17 +499,19 @@ export default function Home() {
           {!nearestStop && !selectedStop && nearbyStops.length > 0 && (
             <div>
               <div className="text-sm font-semibold text-blue-800 mb-2">Nearest stops</div>
-              <div className="flex gap-3 overflow-x-auto pb-4">
-                {nearbyStops.map(stop => (
-                <button
-                  key={stop.stopId}
-                  onClick={() => selectNearbyStop(stop)}
-                  className="liquid-glass shrink-0 px-5 py-3 text-left"
-                >
-                  <div className="text-sm font-semibold text-blue-800 whitespace-nowrap">{stop.stopName}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{Math.round(stop.distanceMeters)}m away</div>
-                </button>
-              ))}
+              <div className="-mx-6 md:-mx-12 lg:-mx-24 overflow-x-auto">
+                <div className="flex gap-3 px-6 md:px-12 lg:px-24 pb-4">
+                  {nearbyStops.map(stop => (
+                    <button
+                      key={stop.stopId}
+                      onClick={() => selectNearbyStop(stop)}
+                      className="liquid-glass shrink-0 px-5 py-3 text-left"
+                    >
+                      <div className="text-sm font-semibold text-blue-800 whitespace-nowrap">{stop.stopName}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{Math.round(stop.distanceMeters)}m away</div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
