@@ -215,10 +215,22 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Floating header pill */}
-      <div className="sticky top-0 z-50 px-4 pt-4 pb-2 pointer-events-none">
-        <div className="bg-gradient-to-r from-lime-400 to-green-700 rounded-full shadow-lg pointer-events-auto">
-          <div className="px-2 md:px-8 lg:px-20 py-2 flex items-center justify-between">
+      {/* Mobile: full-width, pinned to top, rounded bottom corners */}
+      <div className="sm:hidden sticky top-0 z-50 bg-gradient-to-r from-lime-400 to-green-700 rounded-b-lg shadow-lg">
+        <div className="px-6 py-2 flex items-center justify-between">
+          <h1 style={{ fontFamily: 'Quintessential', fontSize: '32px' }} className="text-white m-0">
+            Marin Transit
+          </h1>
+          <div className="text-white text-xs opacity-90 whitespace-nowrap">
+            {relativeTime}
+          </div>
+        </div>
+      </div>
+
+      {/* Tablet/Desktop: floating pill extending 20px beyond each circle edge */}
+      <div className="hidden sm:block sticky top-0 z-50 pt-4 pb-2 pointer-events-none">
+        <div className="bg-gradient-to-r from-lime-400 to-green-700 rounded-full shadow-lg pointer-events-auto mx-1 md:mx-7">
+          <div className="px-5 py-2 flex items-center justify-between">
             <h1 style={{ fontFamily: 'Quintessential', fontSize: '32px' }} className="text-white m-0">
               Marin Transit
             </h1>
