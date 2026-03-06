@@ -425,20 +425,21 @@ export default function Home() {
         <div className="py-8 space-y-6">
           {/* Your stop panel */}
           {nearestStop && nearestStop.routeIds.length > 0 && (
-            <div className="liquid-glass pt-3 pb-4 space-y-6">
-              <div className="text-sm font-semibold text-blue-800 px-4">
+            <div className="liquid-glass px-6 pt-3 pb-4 space-y-6">
+              <div className="text-sm font-semibold text-blue-800">
                 Your stop · {nearestStop.stopName}
               </div>
               {nearestStop.routeIds.map(routeId => {
                 const route = routes.find(r => r.id === routeId)
                 if (!route) return null
                 return (
-                  <RouteLine
-                    key={routeId}
-                    route={route}
-                    vehicles={vehiclesByLine[routeId] || []}
-                    nearbyStopPct={nearestStop.pctByRoute[routeId]}
-                  />
+                  <div key={routeId} className="-mx-6">
+                    <RouteLine
+                      route={route}
+                      vehicles={vehiclesByLine[routeId] || []}
+                      nearbyStopPct={nearestStop.pctByRoute[routeId]}
+                    />
+                  </div>
                 )
               })}
             </div>
