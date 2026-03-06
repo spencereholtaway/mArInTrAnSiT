@@ -6,6 +6,8 @@ const VEHICLE_URL = import.meta.env.DEV
   ? `/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`
   : `/api/vehicle-monitoring`
 
+const NEARBY_THRESHOLD_METERS = 15
+
 // Snap a GPS point to the nearest segment on a shape polyline.
 // Each point is [lat, lng, distAlongShape].
 // Returns the interpolated distance along the shape at the closest point.
@@ -87,6 +89,17 @@ function getNextUpdateCountdown(date) {
   return `Updating in ${seconds}s`
 }
 
+// Haversine distance between two GPS points, returns meters
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 // Build routes array from GTFS data
 const routes = Object.entries(routeData).map(([id, data]) => {
   const dirs = Object.keys(data.directions)
@@ -121,6 +134,23 @@ function StopTick({ pct }) {
   )
 }
 
+function NearbyStopMarker({ pct }) {
+  return (
+    <div
+      className="absolute flex items-center justify-center"
+      style={{
+        left: `${pct}%`,
+        top: 'calc(50% - 8px)',
+        transform: 'translate(-50%, -50%)',
+        zIndex: 5,
+      }}
+    >
+      <div className="absolute w-5 h-5 rounded-full bg-blue-400 animate-ping" />
+      <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow relative" />
+    </div>
+  )
+}
+
 function BusDot({ position, delay, movingRight }) {
   return (
     <div
@@ -146,7 +176,7 @@ function BusDot({ position, delay, movingRight }) {
   )
 }
 
-function RouteLine({ route, vehicles }) {
+function RouteLine({ route, vehicles, nearbyStopPct }) {
   const routeInfo = routeData[route.id]
   return (
     <div className="flex items-center gap-3">
@@ -159,6 +189,9 @@ function RouteLine({ route, vehicles }) {
             : (i / (route.stops.length - 1)) * 100
           return <StopTick key={`${route.id}-${i}`} pct={pct} />
         })}
+        {nearbyStopPct !== undefined && (
+          <NearbyStopMarker pct={nearbyStopPct} />
+        )}
         {vehicles.map((vehicle, i) => {
           const pos = getBusPosition(vehicle, routeInfo)
           if (pos === null) return null
@@ -177,6 +210,8 @@ export default function Home() {
   const [vehiclesByLine, setVehiclesByLine] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
   const [relativeTime, setRelativeTime] = useState('Loading...')
+  const [deviceLocation, setDeviceLocation] = useState(null)
+  const [nearestStop, setNearestStop] = useState(null)
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -212,6 +247,74 @@ export default function Home() {
     return () => clearInterval(timer)
   }, [lastUpdated])
 
+  // Watch device location
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => setDeviceLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => console.warn('Geolocation error:', err),
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
+  // Find nearest stop when device location changes
+  useEffect(() => {
+    if (!deviceLocation) return
+
+    let bestStop = null
+    let bestDist = Infinity
+
+    for (const [routeId, data] of Object.entries(routeData)) {
+      for (const dirData of Object.values(data.directions)) {
+        for (const stop of dirData.stops) {
+          const d = haversineMeters(deviceLocation.lat, deviceLocation.lng, stop.lat, stop.lng)
+          if (d < bestDist) {
+            bestDist = d
+            bestStop = { stopId: stop.id, stopName: stop.name }
+          }
+        }
+      }
+    }
+
+    if (!bestStop || bestDist > NEARBY_THRESHOLD_METERS) {
+      setNearestStop(null)
+      return
+    }
+
+    // Find all routes serving this stop and their pct on the display line
+    const { stopId, stopName } = bestStop
+    const pctByRoute = {}
+    const routeIds = []
+
+    for (const [routeId, data] of Object.entries(routeData)) {
+      const dirs = Object.keys(data.directions)
+      const displayDir = dirs[0]
+      const displayDirData = data.directions[displayDir]
+
+      // Check display direction first
+      const stopInDisplay = displayDirData.stops.find(s => s.id === stopId)
+      if (stopInDisplay) {
+        pctByRoute[routeId] = (stopInDisplay.dist / displayDirData.totalDist) * 100
+        routeIds.push(routeId)
+        continue
+      }
+
+      // Check reverse directions
+      for (const [dir, dirData] of Object.entries(data.directions)) {
+        if (dir === displayDir) continue
+        const stopInReverse = dirData.stops.find(s => s.id === stopId)
+        if (stopInReverse) {
+          pctByRoute[routeId] = 100 - (stopInReverse.dist / dirData.totalDist) * 100
+          routeIds.push(routeId)
+          break
+        }
+      }
+    }
+
+    setNearestStop({ stopId, stopName, distanceMeters: bestDist, routeIds, pctByRoute })
+  }, [deviceLocation])
+
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-clip">
       {/* Mobile: full-width, pinned to top, rounded bottom corners */}
@@ -240,6 +343,27 @@ export default function Home() {
         </div>
 
         <div className="py-8 space-y-6">
+          {/* Your stop panel */}
+          {nearestStop && nearestStop.routeIds.length > 0 && (
+            <div className="liquid-glass px-4 pt-3 pb-4 space-y-6">
+              <div className="text-sm font-semibold text-blue-800">
+                Your stop · {nearestStop.stopName}
+              </div>
+              {nearestStop.routeIds.map(routeId => {
+                const route = routes.find(r => r.id === routeId)
+                if (!route) return null
+                return (
+                  <RouteLine
+                    key={routeId}
+                    route={route}
+                    vehicles={vehiclesByLine[routeId] || []}
+                    nearbyStopPct={nearestStop.pctByRoute[routeId]}
+                  />
+                )
+              })}
+            </div>
+          )}
+
           {routes.map((route) => (
             <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
           ))}
