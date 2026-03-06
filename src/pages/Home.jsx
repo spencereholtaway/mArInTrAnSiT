@@ -140,10 +140,11 @@ function BusDot({ position, delay, movingRight }) {
       </div>
       {/* Chevron pointing in direction of travel */}
       <div
-        className="absolute text-red-500 font-bold text-lg"
+        className="animate-bounce absolute text-red-500 font-bold text-2xl"
         style={{
-          transform: movingRight ? 'translateX(22px) scaleX(1)' : 'translateX(-22px) scaleX(-1)',
+          transform: movingRight ? 'translateX(26px) scaleX(1)' : 'translateX(-26px) scaleX(-1)',
           opacity: 0.7,
+          animationDelay: `${delay}s`,
         }}
       >
         ›
