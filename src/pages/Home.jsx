@@ -76,6 +76,18 @@ function getBusPosition(vehicle, routeInfo) {
   return { pct: Math.min(100, Math.max(0, pct)), movingRight }
 }
 
+// Format relative time (e.g., "45s ago", "2m ago")
+function getRelativeTime(date) {
+  if (!date) return 'Loading...'
+  const now = new Date()
+  const seconds = Math.floor((now - date) / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ago`
+}
+
 // Build routes array from GTFS data
 const routes = Object.entries(routeData).map(([id, data]) => {
   const dirs = Object.keys(data.directions)
@@ -166,6 +178,7 @@ function RouteLine({ route, vehicles }) {
 export default function Home() {
   const [vehiclesByLine, setVehiclesByLine] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [relativeTime, setRelativeTime] = useState('Loading...')
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -193,6 +206,14 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [])
 
+  // Update relative time display every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRelativeTime(getRelativeTime(lastUpdated))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [lastUpdated])
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sticky header bar */}
@@ -202,7 +223,7 @@ export default function Home() {
             Marin Transit
           </h1>
           <div className="text-white text-xs opacity-90 whitespace-nowrap">
-            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}` : 'Loading...'}
+            Updated {relativeTime}
           </div>
         </div>
       </div>
