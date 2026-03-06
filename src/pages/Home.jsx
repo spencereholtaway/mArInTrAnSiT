@@ -236,6 +236,18 @@ function DevPanel({ locationOverride, onOverride }) {
     onOverride({ lat: p.lat, lng: p.lng })
   }
 
+  function useDeviceLocation() {
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const { latitude, longitude } = position.coords
+        setLat(String(latitude))
+        setLng(String(longitude))
+        onOverride(null)
+      },
+      error => console.error('Geolocation error:', error)
+    )
+  }
+
   return (
     <div className="border-t-2 border-dashed border-gray-300 mt-8 pt-5 pb-8">
       <div className="text-xs font-mono font-bold text-gray-400 mb-3 tracking-widest">DEV TOOLS</div>
@@ -259,6 +271,9 @@ function DevPanel({ locationOverride, onOverride }) {
             Clear
           </button>
         )}
+        <button onClick={useDeviceLocation} className="bg-green-500 text-white px-3 py-1 rounded text-xs font-medium">
+          Use Device Location
+        </button>
       </div>
       <div className="flex gap-2 flex-wrap">
         {presets.map(p => (
