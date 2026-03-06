@@ -1,59 +1,90 @@
 import { useState, useEffect } from 'react'
+import routeData from '../data/routeData.json'
 
 const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
 const VEHICLE_URL = import.meta.env.DEV
   ? `/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`
   : `/api/vehicle-monitoring`
 
-function getBusPosition(vehicle, stops) {
-  const journey = vehicle.MonitoredVehicleJourney
-  const monitoredCall = journey?.MonitoredCall
-  if (!monitoredCall) return null
+// Snap a GPS point to the nearest segment on a shape polyline.
+// Each point is [lat, lng, distAlongShape].
+// Returns the interpolated distance along the shape at the closest point.
+function snapToShape(lat, lng, points) {
+  let bestSqDist = Infinity
+  let bestAlongDist = 0
 
-  const isAtStop = monitoredCall.VehicleAtStop === 'true'
-  const currentStopName = monitoredCall.StopPointName
-  const currentIdx = stops.indexOf(currentStopName)
+  for (let i = 0; i < points.length - 1; i++) {
+    const [lat1, lng1, d1] = points[i]
+    const [lat2, lng2, d2] = points[i + 1]
 
-  if (currentIdx !== -1) {
-    const pct = isAtStop
-      ? (currentIdx / (stops.length - 1)) * 100
-      : ((currentIdx + 0.5) / (stops.length - 1)) * 100
-    return Math.min(100, Math.max(0, pct))
-  }
+    // Project onto segment using simple Euclidean (fine at city scale)
+    const dx = lat2 - lat1
+    const dy = lng2 - lng1
+    const len2 = dx * dx + dy * dy
 
-  // Fall back to onward calls to find position
-  const onwardCalls = journey.OnwardCalls?.OnwardCall || []
-  for (const call of onwardCalls) {
-    const idx = stops.indexOf(call.StopPointName)
-    if (idx !== -1) {
-      return Math.min(100, Math.max(0, ((idx - 0.5) / (stops.length - 1)) * 100))
+    let t = 0
+    if (len2 > 0) {
+      t = ((lat - lat1) * dx + (lng - lng1) * dy) / len2
+      t = Math.max(0, Math.min(1, t))
+    }
+
+    const projLat = lat1 + t * dx
+    const projLng = lng1 + t * dy
+    const dLat = lat - projLat
+    const dLng = lng - projLng
+    const sqDist = dLat * dLat + dLng * dLng
+
+    if (sqDist < bestSqDist) {
+      bestSqDist = sqDist
+      bestAlongDist = d1 + t * (d2 - d1)
     }
   }
 
-  return null
+  return bestAlongDist
 }
 
-const routes = [
-  { id: '17', name: 'Downtown San Rafael - Sausalito', stops: ["Bridgeway & Caledonia Av","Bridgeway & Turney St","Bridgeway & Napa St","Bridgeway & Easterby St","Bridgeway & Nevada St","Bridgeway & Coloma St","Bridgeway & Gate 5 Rd","Drake Av & Donahue St","Drake Av & Buckelew St","Drake Av & Pacheco St","Drake Av & Donahue St","Shoreline Hwy & Pohono St","Almonte Blvd & Rosemont Ave","Almonte Blvd & Miller Ave","Miller Ave & Reed St","Miller Ave & Locust Ave","Miller Ave & Park Ave","E Blithedale Ave & Hill St","E Blithedale Ave & Walnut Ave","E Blithedale Ave & Elm Ave","E Blithedale Ave & Hilarita Ave","E Blithedale Ave & Nelson Ave","E Blithedale Ave & Roque Moraes Dr"] },
-  { id: '22', name: 'Downtown San Rafael - Marin City', stops: ["4th St & Court St","4th St & C St","4th St & E St","4th St & Ida St","4th St & Greenfield Ave","4th St & Santa Margarita Ave","Red Hill Ave & Sequoia Dr","Sir Francis Drake Blvd & Ross Av","Sir Francis Drake Blvd & Bolinas Av","1125 Sir Francis Drake Blvd","College of Marin - Sir Francis Drake Blvd & Elm Av","College Ave & Kent Ave","Magnolia Ave & Frances Ave","Magnolia Ave & Skylark Dr","Magnolia Ave & Bon Air Rd","Magnolia Av & Madrone Av","Magnolia Av & Park Way","Redwood Av & Montecito Dr","Tamalpais Dr & Eastman Av","Tamalpais Dr & Meadowsweet Dr","Tiburon Blvd & Hwy 101 NB-Off Ramp","Reed Blvd & Redwood Hwy","Belvedere Dr & Redwood Hwy Frontage Rd","Redwood Hwy Frontage Rd & De Silva Island Dr"] },
-  { id: '23', name: 'Canal - Fairfax Manor', stops: ["1525 Francisco Blvd E","Irene St & Francisco Blvd E","Kerner Blvd btwn 3140 & 3160","Kerner Blvd & Bahia Way","Kerner Blvd & Canal St","Canal St & Sonoma St","Canal St & Novato St","Francisco Blvd E & Bay St","3rd St & Grand Ave","4th St & Court St","4th St & C St","4th St & E St","4th St & Ida St","4th St & Greenfield Ave","4th St & Santa Margarita Ave","Red Hill Ave & Sequoia Dr","Sir Francis Drake Blvd & Madrone Ave","Sir Francis Drake Blvd & Sunnyhills Dr","Sir Francis Drake Blvd & San Francisco Blvd","Sir Francis Drake Blvd & Aspen Ct","Sir Francis Drake Blvd & Broadmoor Ave","Sir Francis Drake Blvd & Butterfield Rd","Sir Francis Drake Blvd & Willow Ave","Sir Francis Drake Blvd & Marinda Dr","Sir Francis Drake Blvd & Oak Tree Ln","Sir Francis Drake Blvd & Oak Manor Dr","Sir Francis Drake Blvd At Drake Manor Apts","Sir Francis Drake Blvd & Alhambra Circle"] },
-  { id: '29', name: 'Downtown San Rafael - E. Corte Madera', stops: ["Paradise Dr & Prince Royal Dr","Paradise Dr & Seawolf Passage","Paradise Dr & Harbor Dr","Paradise Dr & US 101 Overpass","Madera Blvd & Monona Dr","Tamal Vista Blvd & Sandpiper Circle","Tamal Vista Blvd & Fifer Av","Lucky Dr & Riviera Circle","Doherty Dr & Hall Middle School","Doherty Dr & Larkspur Plaza Dr","Bon Air Rd & Magnolia Ave","Bon Air Rd & MHMC Emergency Entrance Rd","Sir Francis Drake Blvd & Bon Air Rd","Sir Francis Drake Blvd & El Portal Dr","Sir Francis Drake Blvd & La Cuesta Dr","Larkspur Landing Cir & Lincoln Village Cir","600 Larkspur Landing Circle"] },
-  { id: '35', name: 'Canal - Northgate', stops: ["Kerner Blvd & Bahia Way","Kerner Blvd & Canal St","Canal St & Sonoma St","Canal St & Novato St","Francisco Blvd E & Bay St","3rd St & Grand Ave","Lincoln Ave & Mission Ave","Lincoln Ave & Paloma Ave","Lincoln Ave & Linden Ln","Lincoln Ave & Grand Ave","N San Pedro Rd & Merrydale Rd","Civic Center Dr & N San Pedro Rd","Nova Albion Way & Arias St","Nova Albion Way & Montecillo Rd","Freitas Pkwy & Northgate Dr"] },
-  { id: '36', name: 'Canal - Marin City', stops: ["Kerner Blvd & Bahia Way","Kerner Blvd & Canal St","Canal St & Sonoma St","Canal St & Novato St","Francisco Blvd E & Bay St","3rd St & Grand Ave","Tiburon Blvd & Hwy 101 NB-Off Ramp","Reed Blvd & Redwood Hwy","Belvedere Dr & Redwood Hwy Frontage Rd","Redwood Hwy Frontage Rd & Hwy 101 SB Ramps"] },
-  { id: '49', name: 'Downtown San Rafael - Novato San Marin', stops: ["San Marin Dr & Redwood Blvd","San Marin Dr & East Campus Dr","San Marin Dr & Simmons Ln","San Marin Dr & Sereno Way","San Marin Dr & San Andreas Dr","San Marin Dr & San Ramon Way","Novato Blvd & Eucalyptus Av","Novato Blvd & Oliva Dr","Novato Blvd & Wilson Ct","Novato Blvd & Mcclay Rd","Novato Blvd & Grant Av","Seventh St & Novato Blvd","Seventh St & Grant Av","Grant Av & Fifth St","Grant Av & Second St","Diablo Av & George St","S Novato Blvd & Diablo Ave","S Novato Blvd & Joan Av","S Novato Blvd & Rowland Blvd","S Novato Blvd & Midway Blvd","S Novato Blvd & Stone Dr","S Novato Blvd & Redwood Blvd","Nave Dr & Roblar Dr","Hamilton Pkwy At Marin Airporter","Hamilton Pkwy & Aberdeen Rd","Hamilton Pkwy & Chapel Hill Rd","Hamilton Main Gate Rd & Martin Dr","Nave Dr & Bolling Dr","Alameda Del Prado At Nave Dr","Marinwood Bus Pad Hwy 101 @ Miller Creek Rd","Civic Center Dr & N San Pedro Rd","Merrydale Rd & N San Pedro Rd"] },
-  { id: '57', name: 'Downtown San Rafael - Novato', stops: ["Union St & Mission Av","Mission Av & Mary St","Grand Av & Belle Av","Grand Av & Jewell St","Grand Av & Mountain View Av","Grand Av & Linden Ln","Lincoln Ave & Linden Ln","Lincoln Ave & Grand Ave","Lincoln Ave & Wilson Ct","Los Ranchitos Rd & Ranch Rd","Los Ranchitos Rd & Circle Rd","Los Ranchitos Rd & Golden Hinde Blvd","Los Ranchitos Rd & Northgate Dr","Las Gallinas Ave & Northgate Dr","Nova Albion Way & Arias St","Manuel T Freitas Pkwy & Montecillo Rd","Manuel T Freitas Pkwy & Del Ganado Rd","Manuel T Freitas Pkwy & Las Pavadas Av","Las Gallinas Av & Oleander Dr","Las Gallinas Av & Las Colindas Rd","Las Gallinas Av & Montevideo Way","Las Gallinas Av & Skyview Terrace","Las Gallinas Av & Santiago Way","Las Gallinas Av & Ellen Dr","Las Gallinas Av & Elvia Ct","Miller Creek Rd & Las Gallinas Av","Alameda Del Prado & Los Robles Rd","Alameda Del Prado & Posada Del Sol","Alameda Del Prado & Calle Arboleda","Alameda Del Prado & Alameda De La Loma","Ignacio Blvd & Alameda Del Prado","Ignacio Blvd At Pacheco Plaza","Ignacio Blvd & Entrada Dr","Ignacio Blvd & Palmer Dr","Ignacio Blvd & Fairway Dr","Ignacio Blvd & Country Club Dr","Ignacio Blvd & Laurelwood Dr","Ignacio Blvd & Turner Dr","Ignacio Blvd & Sunset Pkwy","Ignacio Blvd & Indian Hills Dr","Sunset Pkwy & Merrit Dr","Sunset Pkwy & Midway Blvd","Sunset Pkwy & Denlyn St","Sunset Pkwy & Cambridge St","Rowland Blvd & S Novato Blvd","Rowland Blvd & Redwood Blvd","Rowland Blvd  & Rowland Way","236 Vintage Way","124 Vintage Way","Rowland Blvd & Rowland Way","Rowland Blvd & Redwood Blvd","S Novato Blvd & Rowland Blvd","S Novato Blvd & Arthur St","S Novato Blvd & Lauren Av","S Novato Blvd & Diablo Ave","Diablo Av & George St","Redwood Blvd & Rush Creek Place"] },
-  { id: '61', name: 'Sausalito - Bolinas', stops: ["Bridgeway & Caledonia Av","Bridgeway & Turney St","Bridgeway & Napa St","Bridgeway & Easterby St","Bridgeway & Nevada St","Bridgeway & Coloma St","Bridgeway & Gate 5 Rd","Shoreline Hwy & Pohono St","Tam Junction-Shoreline Hwy & Almonte Blvd","Almonte Blvd & Rosemont Ave","Almonte Blvd & Miller Ave","Miller Ave & Camino Alto","Almonte Blvd & Miller Ave","Almonte Blvd & Rosemont Ave","Shoreline Hwy & Almonte Blvd","Shoreline Hwy & Laurel Way","Shoreline Hwy & Pine Hill Rd","Panoramic Hwy & Sequoia Valley Rd","Panoramic Hwy & Bayview Dr","Panoramic Hwy & Ridge Av","Panoramic Hwy & Park Av","895 Panoramic Hwy Bootjack Parking Lot","Audubon Canyon Ranch"] },
-  { id: '68', name: 'Downtown San Rafael - Inverness', stops: ["4th St & Court St","4th St & C St","4th St & E St","4th St & Ida St","4th St & Greenfield Ave","4th St & Santa Margarita Ave","Red Hill Ave & Sequoia Dr","Sir Francis Drake Blvd & Madrone Ave","Sir Francis Drake Blvd & Sunnyhills Dr","Sir Francis Drake Blvd & San Francisco Blvd","Sir Francis Drake Blvd & Aspen Ct","Sir Francis Drake Blvd & Broadmoor Ave","Sir Francis Drake Blvd & Butterfield Rd","Sir Francis Drake Blvd & Willow Ave","Sir Francis Drake Blvd & Marinda Dr","Sir Francis Drake Blvd & Oak Tree Ln","Sir Francis Drake Blvd & Oak Manor Dr","Sir Francis Drake Blvd At Drake Manor Apts","Sir Francis Drake Blvd & Alhambra Circle","San Geronimo Valley Dr & Creamery Rd"] },
-  { id: '71', name: 'Novato - Marin City', stops: ["Hwy 101 @ Seminary Dr Bus Pad","Hwy 101 @ Tiburon Wye Bus Pad","Hwy 101 @ Lucky Dr Bus Pad","Hwy 101 @ N San Pedro Rd Bus Pad","Hwy 101 @ Terra Linda Bus Pad NB","Marinwood Bus Pad Hwy 101 @ Saint Vincent's Dr","Hwy 101 @ Alameda Del Prado Bus Pad","Hwy 101 @ Rowland Blvd Bus Pad","Hwy 101 @ DeLong Ave Bus Pad","DeLong Ave & Reichert Ave"] },
-  { id: '219', name: 'Tiburon - Strawberry', stops: ["Belvedere Dr & Redwood Hwy Frontage Rd","Tiburon Blvd & N Knoll Rd","Tiburon Blvd & Strawberry Dr","Tiburon Blvd & Greenwood Cove Rd","Tiburon Blvd & Cecilia Way","Tiburon Blvd & Greenwood Beach Rd","Tiburon Blvd & Pine Terrace","Tiburon Blvd & Rock Hill Dr","Tiburon Blvd & Gilmartin Dr","Tiburon Blvd & San Rafael Av","Tiburon Blvd & Neds Way","Tiburon Blvd & Lyford Dr","Tiburon Blvd & Mar West St","Tiburon Blvd & Beach Rd"] },
-  { id: '228', name: 'Downtown San Rafael - Fairfax Manor', stops: ["Larkspur Landing Cir & Lincoln Village Cir","600 Larkspur Landing Circle","Sir Francis Drake Blvd & La Cuesta Dr","Via Casitas & El Portal Dr","630 S Eliseo Dr","1220 S Eliseo Dr","Bon Air Rd & MHMC Emergency Entrance Rd","Sir Francis Drake Blvd & Bon Air Rd","Sir Francis Drake Blvd & Wolfe Grade","Sir Francis Drake Blvd & Laurel Grove Ave","Sir Francis Drake Blvd & Oak Ave","Sir Francis Drake Blvd & Ash Ave","Sir Francis Drake Blvd & Ross Terrace","Sir Francis Drake Blvd & Bolinas Rd","Sir Francis Drake Blvd & Barber Av","Sir Francis Drake Blvd & Madrone Ave","Sir Francis Drake Blvd & Sunnyhills Dr","Sir Francis Drake Blvd & San Francisco Blvd","Sir Francis Drake Blvd & Aspen Ct","Sir Francis Drake Blvd & Broadmoor Ave","Sir Francis Drake Blvd & Butterfield Rd","Sir Francis Drake Blvd & Willow Ave","Sir Francis Drake Blvd & Marinda Dr","Sir Francis Drake Blvd & Oak Tree Ln","Sir Francis Drake Blvd & Oak Manor Dr","Sir Francis Drake Blvd At Drake Manor Apts","Sir Francis Drake Blvd & Alhambra Circle"] },
-  { id: '233', name: 'San Rafael (Downtown - Santa Venetia)', stops: ["Adrian Way & Rosal Way","La Pasada Way & N San Pedro Rd","N San Pedro Rd & Mabry Way","N San Pedro Rd & Meadow Dr","N San Pedro Rd & Schmidt Ln","N San Pedro Rd & Meriam Dr","N San Pedro Rd & Roosevelt Av","N San Pedro Rd & Jefferson Av","Civic Center Dr & N San Pedro Rd","N San Pedro Rd & Merrydale Rd","Lincoln Ave & Wilson Ct","Lincoln Ave & Grand Ave","Grand Av & Linden Ln","Grand Av & Mountain View Av","Grand Av & Jewell St","Grand Av & Belle Av","Mission Av & Mary St","Union St & Fourth St","3rd St & Grand Ave"] },
-  { id: '245', name: 'San Rafael (Downtown - Smith Ranch Road)', stops: ["Smith Ranch Rd At Cinemark","Las Gallinas Av & Cedar Hill Dr","Las Gallinas Av & Maple Hill Dr","Las Gallinas Av & Park Ridge Av","Las Gallinas Av & Las Colindas Rd","Las Gallinas Av & Holly Dr","Manuel T Freitas Pkwy & Las Gallinas Av","Manuel T Freitas Pkwy & Las Pavadas Av","Manuel T Freitas Pkwy & Del Ganado Rd","Montecillo Rd At Kaiser Hospital Lot C","Nova Albion Way & Montecillo Rd","Nova Albion Way & Arias St","Hwy 101 @ N San Pedro Rd Bus Pad"] },
-  { id: '613', name: 'Paradise Cay - Redwood HS', stops: ["Redwood High & Doherty Dr","Doherty Dr & Larkspur Plaza Dr","Magnolia Av & Ward St","Magnolia Av & Madrone Av","Magnolia Av & Park Way","Redwood Av & Montecito Dr","Tamalpais Dr & Eastman Av","33 San Clemente Dr","Paradise Dr & Madera Del Presidio Av","Paradise Dr & El Camino Dr","Paradise Dr & Golden Hinde Passage","Paradise Dr & Uplands Circle","Paradise Dr & Robin Dr","Paradise Dr & Ranch Rd"] },
-  { id: '619', name: 'Tiburon - Redwood HS', stops: ["Tiburon Blvd & Beach Rd","Tiburon Blvd & Mar West St","Tiburon Blvd & Lyford Dr","Tiburon Blvd & Neds Way","Tiburon Blvd & San Rafael Av","Tiburon Blvd & Gilmartin Dr","Tiburon Blvd & Rock Hill Dr","Tiburon Blvd & Avenida Miraflores","Tiburon Blvd & Jefferson Dr","Tiburon Blvd & Reed Ranch Rd","Tiburon Blvd & Cecilia Way","Tiburon Blvd & Blackfield Dr","Tiburon Blvd & Bay Vista Dr","Tiburon Blvd & N Knoll Rd","Tamal Vista Blvd & Fifer Av","Lucky Dr & Riviera Circle"] },
-  { id: '625', name: 'Lagunitas - Sir Francis Drake HS - San Anselmo Hub', stops: ["Sir Francis Drake Blvd & Madrone Ave","Sir Francis Drake Blvd & Sunnyhills Dr","Sir Francis Drake Blvd & San Francisco Blvd","Sir Francis Drake Blvd & Broadmoor Ave","Sir Francis Drake Blvd & Butterfield Rd","Sir Francis Drake Blvd & Willow Ave","Sir Francis Drake Blvd & Marinda Dr","Sir Francis Drake Blvd & Oak Tree Ln","Sir Francis Drake Blvd & Oak Manor Dr","Sir Francis Drake Blvd At Drake Manor Apts","Sir Francis Drake Blvd & Alhambra Circle","San Geronimo Valley Dr & Creamery Rd"] },
-  { id: '654', name: 'Olive - Novato Loop', stops: ["Grant Av & Second St","Grant Av & Fifth St","Seventh St & Grant Av","Seventh St & Novato Blvd","Novato Blvd & Seventh St","Novato Blvd & Grant Av","Novato Blvd & Mcclay Rd","Novato Blvd & Wilson Ct","Novato Blvd & Oliva Dr","Novato Blvd & Eucalyptus Av","San Marin Dr & San Ramon Way","San Marin Dr & Sereno Way","San Marin Dr & Simmons Ln","San Marin Dr & Somerset Dr","San Marin Dr & Santolina Dr","San Marin Dr & Redwood Blvd","Olive Av & Kenwood Ct"] },
-]
+// Get bus position as 0-100% along the route line
+function getBusPosition(vehicle, routeInfo) {
+  const journey = vehicle.MonitoredVehicleJourney
+  const loc = journey?.VehicleLocation
+  if (!loc) return null
+
+  const busLat = Number(loc.Latitude)
+  const busLng = Number(loc.Longitude)
+  if (!busLat || !busLng) return null
+
+  const dirRef = journey?.DirectionRef
+  const dirs = Object.keys(routeInfo.directions)
+  const displayDir = dirs[0]
+
+  // Use the bus's direction shape if available, else display direction
+  const busDir = dirRef && routeInfo.directions[dirRef] ? dirRef : displayDir
+  const shape = routeInfo.directions[busDir]
+  if (!shape || !shape.points.length) return null
+
+  const snapDist = snapToShape(busLat, busLng, shape.points)
+  let pct = (snapDist / shape.totalDist) * 100
+
+  // If bus is going in the opposite direction from display, invert
+  if (busDir !== displayDir) {
+    pct = 100 - pct
+  }
+
+  return Math.min(100, Math.max(0, pct))
+}
+
+// Build routes array from GTFS data
+const routes = Object.entries(routeData).map(([id, data]) => {
+  const dirs = Object.keys(data.directions)
+  const displayDir = dirs[0]
+  const dirData = data.directions[displayDir]
+  return {
+    id,
+    name: data.name,
+    stops: dirData.stops,
+    totalDist: dirData.totalDist,
+  }
+})
 
 function RouteCircle({ routeId }) {
   return (
@@ -63,8 +94,7 @@ function RouteCircle({ routeId }) {
   )
 }
 
-function StopTick({ index, total }) {
-  const pct = total === 1 ? 50 : (index / (total - 1)) * 100
+function StopTick({ pct }) {
   return (
     <div
       className="absolute w-px h-4 bg-black"
@@ -89,19 +119,20 @@ function BusDot({ position }) {
 }
 
 function RouteLine({ route, vehicles }) {
+  const routeInfo = routeData[route.id]
   return (
     <div className="flex items-center gap-3">
       <RouteCircle routeId={route.id} />
       <div className="flex-1 relative h-8">
-        {/* The horizontal line */}
         <div className="absolute left-0 right-0 top-1/2 h-px bg-black" />
-        {/* Stop ticks */}
-        {route.stops.map((stop, i) => (
-          <StopTick key={`${route.id}-${i}`} index={i} total={route.stops.length} />
-        ))}
-        {/* Live bus positions */}
+        {route.stops.map((stop, i) => {
+          const pct = route.totalDist > 0
+            ? (stop.dist / route.totalDist) * 100
+            : (i / (route.stops.length - 1)) * 100
+          return <StopTick key={`${route.id}-${i}`} pct={pct} />
+        })}
         {vehicles.map((vehicle, i) => {
-          const pos = getBusPosition(vehicle, route.stops)
+          const pos = getBusPosition(vehicle, routeInfo)
           if (pos === null) return null
           return <BusDot key={vehicle.MonitoredVehicleJourney?.VehicleRef || i} position={pos} />
         })}
