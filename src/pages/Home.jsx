@@ -580,7 +580,7 @@ export default function Home() {
           {/* Nearby stops carousel - shown when not auto-detected and no manual selection */}
           {!nearestStop && !selectedStop && nearbyStops.length > 0 && (
             <div>
-              <div className="text-sm font-semibold text-blue-800 mb-2">Nearest stops</div>
+              <div className="text-sm font-semibold text-blue-800 mb-2 px-6 md:px-0">Nearest stops</div>
               <div className="md:-mx-12 lg:-mx-24 overflow-x-auto no-scrollbar">
                 <div className="flex gap-3 px-6 md:px-12 lg:px-24 pb-4">
                   {nearbyStops.map(stop => (
