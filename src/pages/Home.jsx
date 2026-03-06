@@ -132,22 +132,15 @@ function BusDot({ position, delay, movingRight }) {
         className="absolute w-8 h-8 rounded-full animate-ping bg-lime-400"
         style={{ animationDelay: `${delay * 1.5}s` }}
       />
-      <div
-        className="animate-bounce absolute text-2xl"
-        style={{ animationDelay: `${delay}s`, transform: movingRight ? 'scaleX(1)' : 'scaleX(-1)' }}
-      >
-        🚌
+      {/* Bus: bounce wrapper → flip inner */}
+      <div className="animate-bounce absolute" style={{ animationDelay: `${delay}s` }}>
+        <div className="text-2xl" style={{ transform: movingRight ? 'scaleX(1)' : 'scaleX(-1)' }}>🚌</div>
       </div>
-      {/* Chevron pointing in direction of travel */}
-      <div
-        className="animate-bounce absolute text-red-500 font-bold text-2xl"
-        style={{
-          transform: movingRight ? 'translateX(26px) scaleX(1)' : 'translateX(-26px) scaleX(-1)',
-          opacity: 0.7,
-          animationDelay: `${delay}s`,
-        }}
-      >
-        ›
+      {/* Chevron: offset wrapper → bounce wrapper → flip inner */}
+      <div className="absolute" style={{ transform: movingRight ? 'translateX(20px)' : 'translateX(-20px)' }}>
+        <div className="animate-bounce" style={{ animationDelay: `${delay}s` }}>
+          <div className="text-red-500 font-bold text-2xl" style={{ transform: movingRight ? 'scaleX(1)' : 'scaleX(-1)', opacity: 0.7 }}>›</div>
+        </div>
       </div>
     </div>
   )
