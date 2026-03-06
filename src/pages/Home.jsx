@@ -448,9 +448,7 @@ export default function Home() {
             <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
           ))}
 
-          {import.meta.env.DEV && (
-            <DevPanel locationOverride={locationOverride} onOverride={setLocationOverride} />
-          )}
+          <DevPanel locationOverride={locationOverride} onOverride={setLocationOverride} />
         </div>
       </div>
     </div>
