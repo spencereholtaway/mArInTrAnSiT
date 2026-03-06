@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { Smile, Info, TriangleAlert, CircleX, Loader } from 'lucide-react'
 import routeData from '../data/routeData.json'
 
 const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
 const VEHICLE_URL = import.meta.env.DEV
   ? `/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`
   : `/api/vehicle-monitoring`
+const ALERTS_URL = `/api/service-alerts`
 
 const NEARBY_THRESHOLD_METERS = 15
 
@@ -121,6 +123,27 @@ function RouteCircle({ routeId }) {
   )
 }
 
+function AlertCircle({ severity }) {
+  // severity: null=loading, undefined/no entry=ok, 'info'/'normal'/'undefined'=info, 'slight'=warning, 'severe'=severe
+  let content
+  if (severity === null) {
+    content = <Loader size={18} className="text-gray-400 animate-spin" />
+  } else if (severity === 'severe') {
+    content = <CircleX size={18} className="text-red-500" />
+  } else if (severity === 'slight') {
+    content = <TriangleAlert size={18} className="text-yellow-500" />
+  } else if (severity && severity !== 'ok') {
+    content = <Info size={18} className="text-blue-500" />
+  } else {
+    content = <Smile size={18} className="text-green-500" />
+  }
+  return (
+    <div className="w-9 h-9 rounded-full border-2 border-black bg-white flex items-center justify-center shrink-0">
+      {content}
+    </div>
+  )
+}
+
 function StopTick({ pct, stopName }) {
   const [showTooltip, setShowTooltip] = useState(false)
   return (
@@ -185,7 +208,7 @@ function BusDot({ position, delay, movingRight }) {
   )
 }
 
-function RouteLine({ route, vehicles, nearbyStopPct }) {
+function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
   const routeInfo = routeData[route.id]
   const firstStop = route.stops[0]?.name || 'Start'
   const lastStop = route.stops[route.stops.length - 1]?.name || 'End'
@@ -214,7 +237,7 @@ function RouteLine({ route, vehicles, nearbyStopPct }) {
           return <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight} />
         })}
       </div>
-      <RouteCircle routeId={route.id} />
+      <AlertCircle severity={alertSeverity} />
     </div>
   )
 }
@@ -316,6 +339,7 @@ export default function Home() {
   const [vehiclesByLine, setVehiclesByLine] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
   const [relativeTime, setRelativeTime] = useState('Loading...')
+  const [alertsByLine, setAlertsByLine] = useState(null) // null = loading
   const [deviceLocation, setDeviceLocation] = useState(null)
   const [locationOverride, setLocationOverride] = useState(null)
   const [nearestStop, setNearestStop] = useState(null)
@@ -345,6 +369,40 @@ export default function Home() {
 
     fetchVehicles()
     const interval = setInterval(fetchVehicles, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Fetch service alerts (every 5 minutes)
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      try {
+        const res = await fetch(ALERTS_URL)
+        const text = await res.text()
+        const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
+        const situations = data?.Siri?.ServiceDelivery?.SituationExchangeDelivery?.Situations?.PtSituationElement || []
+        const byLine = {}
+        for (const sit of situations) {
+          const severity = (sit.Severity || 'unknown').toLowerCase()
+          const journeys = sit.Affects?.VehicleJourneys?.AffectedVehicleJourney
+          const lines = Array.isArray(journeys) ? journeys : journeys ? [journeys] : []
+          for (const j of lines) {
+            const lineRef = j.LineRef
+            if (!lineRef) continue
+            const current = byLine[lineRef]
+            // Escalate severity: info < warning < severe
+            const rank = { info: 1, slight: 2, normal: 1, severe: 3, undefined: 1 }
+            const newRank = rank[severity] || 1
+            if (!current || newRank > (rank[current] || 1)) byLine[lineRef] = severity
+          }
+        }
+        setAlertsByLine(byLine)
+      } catch (err) {
+        console.error('Alerts fetch failed:', err)
+        setAlertsByLine({})
+      }
+    }
+    fetchAlerts()
+    const interval = setInterval(fetchAlerts, 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -469,6 +527,7 @@ export default function Home() {
                       route={route}
                       vehicles={vehiclesByLine[routeId] || []}
                       nearbyStopPct={activeStop.pctByRoute[routeId]}
+                      alertSeverity={alertsByLine === null ? null : (alertsByLine[routeId] || 'ok')}
                     />
                   )
                 })}
@@ -489,7 +548,7 @@ export default function Home() {
           {/* All lines section */}
           <div className="p-6 space-y-6">
             {routes.map((route) => (
-              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
+              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={alertsByLine === null ? null : (alertsByLine[route.id] || 'ok')} />
             ))}
           </div>
 
