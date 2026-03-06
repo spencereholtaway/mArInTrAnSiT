@@ -264,7 +264,14 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
   )
 }
 
-function DevPanel({ locationOverride, onOverride }) {
+const ALERT_OPTIONS = [
+  { value: 'ok',     label: 'No alerts' },
+  { value: 'info',   label: 'Advisory' },
+  { value: 'slight', label: 'Alert' },
+  { value: 'severe', label: 'Severe' },
+]
+
+function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverride, onGoLive }) {
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
 
@@ -353,6 +360,57 @@ function DevPanel({ locationOverride, onOverride }) {
           Simulating {locationOverride.lat.toFixed(6)}, {locationOverride.lng.toFixed(6)}
         </div>
       )}
+
+      <div className="mt-6">
+        <div className="text-xs font-semibold text-gray-600 mb-2">Simulate Service Alerts</div>
+        <table className="text-xs w-full">
+          <thead>
+            <tr className="text-gray-400 text-left">
+              <th className="font-medium pb-1 pr-4">Route</th>
+              {ALERT_OPTIONS.map(o => (
+                <th key={o.value} className="font-medium pb-1 pr-3">{o.label}</th>
+              ))}
+              <th className="font-medium pb-1">Live</th>
+            </tr>
+          </thead>
+          <tbody>
+            {routes.map(route => (
+              <tr key={route.id} className="border-t border-gray-100">
+                <td className="py-1 pr-4 font-mono font-bold text-gray-600">{route.id}</td>
+                {ALERT_OPTIONS.map(o => (
+                  <td key={o.value} className="py-1 pr-3">
+                    <input
+                      type="radio"
+                      name={`alert-${route.id}`}
+                      checked={alertOverrides[route.id] === o.value}
+                      onChange={() => onAlertOverride(route.id, o.value)}
+                    />
+                  </td>
+                ))}
+                <td className="py-1">
+                  <input
+                    type="radio"
+                    name={`alert-${route.id}`}
+                    checked={alertOverrides[route.id] === undefined}
+                    onChange={() => {
+                      const next = { ...alertOverrides }
+                      delete next[route.id]
+                      onAlertOverride(route.id, undefined)
+                    }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4">
+        <button onClick={onGoLive} className="bg-green-500 text-white px-3 py-1 rounded text-xs font-medium">
+          Go Live
+        </button>
+        <span className="text-xs text-gray-400 ml-2">Resets location and all alert overrides to live data</span>
+      </div>
     </div>
   )
 }
@@ -362,6 +420,7 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [relativeTime, setRelativeTime] = useState('Loading...')
   const [alertsByLine, setAlertsByLine] = useState(null) // null = loading
+  const [alertOverrides, setAlertOverrides] = useState({}) // routeId → severity override
   const [deviceLocation, setDeviceLocation] = useState(null)
   const [locationOverride, setLocationOverride] = useState(null)
   const [nearestStop, setNearestStop] = useState(null)
@@ -551,7 +610,7 @@ export default function Home() {
                       route={route}
                       vehicles={vehiclesByLine[routeId] || []}
                       nearbyStopPct={activeStop.pctByRoute[routeId]}
-                      alertSeverity={alertsByLine === null ? null : (alertsByLine[routeId] || 'ok')}
+                      alertSeverity={alertOverrides[routeId] ?? (alertsByLine === null ? null : (alertsByLine[routeId] || 'ok'))}
                     />
                   )
                 })}
@@ -572,11 +631,22 @@ export default function Home() {
           {/* All lines section */}
           <div className="p-6 space-y-6">
             {routes.map((route) => (
-              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={alertsByLine === null ? null : (alertsByLine[route.id] || 'ok')} />
+              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={alertOverrides[route.id] ?? (alertsByLine === null ? null : (alertsByLine[route.id] || 'ok'))} />
             ))}
           </div>
 
-          <DevPanel locationOverride={locationOverride} onOverride={setLocationOverride} />
+          <DevPanel
+            locationOverride={locationOverride}
+            onOverride={setLocationOverride}
+            alertOverrides={alertOverrides}
+            onAlertOverride={(routeId, severity) => setAlertOverrides(prev => {
+              const next = { ...prev }
+              if (severity === undefined) delete next[routeId]
+              else next[routeId] = severity
+              return next
+            })}
+            onGoLive={() => { setLocationOverride(null); setAlertOverrides({}) }}
+          />
         </div>
       </div>
     </div>
