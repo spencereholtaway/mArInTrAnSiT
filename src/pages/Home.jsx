@@ -70,7 +70,10 @@ function getBusPosition(vehicle, routeInfo) {
     pct = 100 - pct
   }
 
-  return Math.min(100, Math.max(0, pct))
+  // movingRight = traveling left-to-right on the display line
+  const movingRight = busDir === displayDir
+
+  return { pct: Math.min(100, Math.max(0, pct)), movingRight }
 }
 
 // Build routes array from GTFS data
@@ -107,13 +110,16 @@ function StopTick({ pct }) {
   )
 }
 
-function BusDot({ position }) {
+function BusDot({ position, delay }) {
   return (
     <div
       className="absolute"
       style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
     >
-      <div className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-md" />
+      <div
+        className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-md"
+        style={{ animationDelay: `${delay}s` }}
+      />
     </div>
   )
 }
@@ -134,7 +140,10 @@ function RouteLine({ route, vehicles }) {
         {vehicles.map((vehicle, i) => {
           const pos = getBusPosition(vehicle, routeInfo)
           if (pos === null) return null
-          return <BusDot key={vehicle.MonitoredVehicleJourney?.VehicleRef || i} position={pos} />
+          // Create staggered bounce delay from vehicle ref
+          const ref = vehicle.MonitoredVehicleJourney?.VehicleRef || String(i)
+          const delay = (ref.charCodeAt(ref.length - 1) % 8) * 0.1
+          return <BusDot key={ref} position={pos.pct} delay={delay} />
         })}
       </div>
       <RouteCircle routeId={route.id} />
