@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 
 const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
+const VEHICLE_URL = import.meta.env.DEV
+  ? `/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`
+  : `/api/vehicle-monitoring`
 
 function getBusPosition(vehicle, stops) {
   const journey = vehicle.MonitoredVehicleJourney
@@ -114,7 +117,7 @@ export default function Home() {
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
-        const res = await fetch(`/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`)
+        const res = await fetch(VEHICLE_URL)
         const text = await res.text()
         const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
         const activities = data?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.VehicleActivity || []
