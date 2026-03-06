@@ -76,16 +76,15 @@ function getBusPosition(vehicle, routeInfo) {
   return { pct: Math.min(100, Math.max(0, pct)), movingRight }
 }
 
-// Format relative time (e.g., "45s ago", "2m ago")
-function getRelativeTime(date) {
+// Calculate countdown to next update (polling every 30 seconds)
+function getNextUpdateCountdown(date) {
   if (!date) return 'Loading...'
+  const POLL_INTERVAL = 30000 // 30 seconds
   const now = new Date()
-  const seconds = Math.floor((now - date) / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  return `${hours}h ago`
+  const elapsed = now - date
+  const remaining = Math.max(0, POLL_INTERVAL - elapsed)
+  const seconds = Math.ceil(remaining / 1000)
+  return `Updates in ${seconds}s`
 }
 
 // Build routes array from GTFS data
@@ -206,10 +205,10 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [])
 
-  // Update relative time display every second
+  // Update countdown display every second
   useEffect(() => {
     const timer = setInterval(() => {
-      setRelativeTime(getRelativeTime(lastUpdated))
+      setRelativeTime(getNextUpdateCountdown(lastUpdated))
     }, 1000)
     return () => clearInterval(timer)
   }, [lastUpdated])
@@ -224,7 +223,7 @@ export default function Home() {
               Marin Transit
             </h1>
             <div className="text-white text-xs opacity-90 whitespace-nowrap">
-              Updated {relativeTime}
+              {relativeTime}
             </div>
           </div>
         </div>
