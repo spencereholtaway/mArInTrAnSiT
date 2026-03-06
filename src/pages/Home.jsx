@@ -165,6 +165,7 @@ function RouteLine({ route, vehicles }) {
 
 export default function Home() {
   const [vehiclesByLine, setVehiclesByLine] = useState({})
+  const [lastUpdated, setLastUpdated] = useState(null)
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -181,6 +182,7 @@ export default function Home() {
           byLine[lineRef].push(v)
         }
         setVehiclesByLine(byLine)
+        setLastUpdated(new Date())
       } catch (err) {
         console.error('Vehicle fetch failed:', err)
       }
@@ -195,10 +197,13 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       {/* Floating header bar */}
       <div className="flex justify-center pt-6 px-4 relative z-20">
-        <div className="bg-gradient-to-r from-lime-400 to-green-700 rounded-full px-8 py-4 shadow-lg">
+        <div className="bg-gradient-to-r from-lime-400 to-green-700 rounded-full px-8 py-4 shadow-lg flex items-center justify-between gap-8 min-w-max">
           <h1 style={{ fontFamily: 'Quintessential', fontSize: '48px' }} className="text-white m-0">
             Marin Transit
           </h1>
+          <div className="text-white text-xs opacity-90 whitespace-nowrap">
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}` : 'Loading...'}
+          </div>
         </div>
       </div>
 
