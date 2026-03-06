@@ -514,14 +514,16 @@ export default function Home() {
     })
   }
 
-  // Fetch arrivals when nearby stops or active stop changes
+  // Fetch arrivals when nearby stops or active stop changes; refresh every 30s
   useEffect(() => {
     const activeStop = nearestStop ?? selectedStop
-    if (activeStop) {
-      fetchArrivalsForStops([activeStop.stopId])
-    } else if (nearbyStops.length > 0) {
-      fetchArrivalsForStops(nearbyStops.map(s => s.stopId))
-    }
+    const stopIds = activeStop
+      ? [activeStop.stopId]
+      : nearbyStops.map(s => s.stopId)
+    if (stopIds.length === 0) return
+    fetchArrivalsForStops(stopIds)
+    const interval = setInterval(() => fetchArrivalsForStops(stopIds), 30000)
+    return () => clearInterval(interval)
   }, [nearbyStops, nearestStop, selectedStop])
 
   // Watch device location
