@@ -125,26 +125,43 @@ function RouteCircle({ routeId }) {
 
 function AlertCircle({ severity }) {
   // severity: null=loading, undefined/no entry=ok, 'info'/'normal'/'undefined'=info, 'slight'=warning, 'severe'=severe
-  let content, borderColor
+  const [hovered, setHovered] = useState(false)
+  let content, borderColor, label
   if (severity === null) {
     content = <Loader size={18} className="text-gray-400 animate-spin" />
     borderColor = 'border-gray-400'
+    label = 'Checking for alerts…'
   } else if (severity === 'severe') {
     content = <CircleX size={18} className="text-red-500" />
     borderColor = 'border-red-500'
+    label = 'Severe disruption'
   } else if (severity === 'slight') {
     content = <TriangleAlert size={18} className="text-yellow-500" />
     borderColor = 'border-yellow-500'
+    label = 'Service alert'
   } else if (severity && severity !== 'ok') {
     content = <Info size={18} className="text-blue-500" />
     borderColor = 'border-blue-500'
+    label = 'Service advisory'
   } else {
     content = <Smile size={18} className="text-green-500" />
     borderColor = 'border-green-500'
+    label = 'No alerts'
   }
   return (
-    <div className={`w-9 h-9 rounded-full border-2 ${borderColor} bg-white flex items-center justify-center shrink-0`}>
-      {content}
+    <div
+      className="relative shrink-0"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className={`w-9 h-9 rounded-full border-2 ${borderColor} bg-white flex items-center justify-center`}>
+        {content}
+      </div>
+      {hovered && (
+        <div className="absolute bottom-full right-0 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
+          {label}
+        </div>
+      )}
     </div>
   )
 }
