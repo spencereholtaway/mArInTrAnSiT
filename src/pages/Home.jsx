@@ -121,16 +121,25 @@ function RouteCircle({ routeId }) {
   )
 }
 
-function StopTick({ pct }) {
+function StopTick({ pct, stopName }) {
+  const [showTooltip, setShowTooltip] = useState(false)
   return (
     <div
-      className="absolute w-px h-4 bg-black"
+      className="absolute w-px h-4 bg-black group cursor-pointer"
       style={{
         left: `${pct}%`,
         top: '50%',
         transform: 'translate(-50%, -50%)',
       }}
-    />
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {showTooltip && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
+          {stopName}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -187,7 +196,7 @@ function RouteLine({ route, vehicles, nearbyStopPct }) {
           const pct = route.totalDist > 0
             ? (stop.dist / route.totalDist) * 100
             : (i / (route.stops.length - 1)) * 100
-          return <StopTick key={`${route.id}-${i}`} pct={pct} />
+          return <StopTick key={`${route.id}-${i}`} pct={pct} stopName={stop.name} />
         })}
         {nearbyStopPct !== undefined && (
           <NearbyStopMarker pct={nearbyStopPct} />
