@@ -425,7 +425,7 @@ export default function Home() {
         <div className="py-8 space-y-6">
           {/* Your stop panel */}
           {nearestStop && nearestStop.routeIds.length > 0 && (
-            <div className="liquid-glass px-6 pt-3 pb-4 space-y-6">
+            <div className="liquid-glass p-6 space-y-6">
               <div className="text-sm font-semibold text-blue-800">
                 Your stop · {nearestStop.stopName}
               </div>
@@ -433,21 +433,23 @@ export default function Home() {
                 const route = routes.find(r => r.id === routeId)
                 if (!route) return null
                 return (
-                  <div key={routeId} className="-mx-6">
-                    <RouteLine
-                      route={route}
-                      vehicles={vehiclesByLine[routeId] || []}
-                      nearbyStopPct={nearestStop.pctByRoute[routeId]}
-                    />
-                  </div>
+                  <RouteLine
+                    key={routeId}
+                    route={route}
+                    vehicles={vehiclesByLine[routeId] || []}
+                    nearbyStopPct={nearestStop.pctByRoute[routeId]}
+                  />
                 )
               })}
             </div>
           )}
 
-          {routes.map((route) => (
-            <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
-          ))}
+          {/* All lines section */}
+          <div className="p-6 space-y-6">
+            {routes.map((route) => (
+              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
+            ))}
+          </div>
 
           <DevPanel locationOverride={locationOverride} onOverride={setLocationOverride} />
         </div>
