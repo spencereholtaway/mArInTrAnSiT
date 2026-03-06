@@ -121,8 +121,7 @@ function RouteCircle({ routeId }) {
   )
 }
 
-function StopTick({ pct, stopName }) {
-  const [showTooltip, setShowTooltip] = useState(false)
+function StopTick({ pct, stopName, isActive, isHovered, onHoverEnter, onHoverLeave }) {
   return (
     <div
       className="absolute w-px h-4 bg-black group cursor-pointer"
@@ -131,10 +130,10 @@ function StopTick({ pct, stopName }) {
         top: '50%',
         transform: 'translate(-50%, -50%)',
       }}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
     >
-      {showTooltip && (
+      {(isActive || isHovered) && (
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
           {stopName}
         </div>
@@ -185,7 +184,7 @@ function BusDot({ position, delay, movingRight }) {
   )
 }
 
-function RouteLine({ route, vehicles, nearbyStopPct }) {
+function RouteLine({ route, vehicles, nearbyStopPct, activeStopId, hoveredStopId, onStopHover, onStopLeave }) {
   const routeInfo = routeData[route.id]
   return (
     <div className="flex items-center gap-3">
@@ -196,7 +195,17 @@ function RouteLine({ route, vehicles, nearbyStopPct }) {
           const pct = route.totalDist > 0
             ? (stop.dist / route.totalDist) * 100
             : (i / (route.stops.length - 1)) * 100
-          return <StopTick key={`${route.id}-${i}`} pct={pct} stopName={stop.name} />
+          return (
+            <StopTick
+              key={`${route.id}-${i}`}
+              pct={pct}
+              stopName={stop.name}
+              isActive={stop.id === activeStopId}
+              isHovered={stop.id === hoveredStopId}
+              onHoverEnter={() => onStopHover(stop.id)}
+              onHoverLeave={onStopLeave}
+            />
+          )
         })}
         {nearbyStopPct !== undefined && (
           <NearbyStopMarker pct={nearbyStopPct} />
@@ -317,6 +326,7 @@ export default function Home() {
   const [nearestStop, setNearestStop] = useState(null)
   const [nearbyStops, setNearbyStops] = useState([])
   const [selectedStop, setSelectedStop] = useState(null)
+  const [hoveredStopId, setHoveredStopId] = useState(null)
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -465,6 +475,10 @@ export default function Home() {
                       route={route}
                       vehicles={vehiclesByLine[routeId] || []}
                       nearbyStopPct={activeStop.pctByRoute[routeId]}
+                      activeStopId={activeStop.stopId}
+                      hoveredStopId={hoveredStopId}
+                      onStopHover={setHoveredStopId}
+                      onStopLeave={() => setHoveredStopId(null)}
                     />
                   )
                 })}
