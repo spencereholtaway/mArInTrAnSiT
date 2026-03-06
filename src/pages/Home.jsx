@@ -193,10 +193,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="w-full bg-gradient-to-r from-blue-600 to-blue-800 py-20">
-        <div className="max-w-7xl mx-auto px-4 text-center">
-          <h1 style={{ fontFamily: 'Quintessential', fontSize: '72px' }} className="text-white">
-            mArInTrAnSiT
+      {/* Floating header bar */}
+      <div className="flex justify-center pt-6 px-4 relative z-20">
+        <div className="bg-gradient-to-r from-lime-400 to-green-700 rounded-full px-8 py-4 shadow-lg">
+          <h1 style={{ fontFamily: 'Quintessential', fontSize: '48px' }} className="text-white m-0">
+            Marin Transit
           </h1>
         </div>
       </div>
