@@ -110,16 +110,26 @@ function StopTick({ pct }) {
   )
 }
 
-function BusDot({ position, delay }) {
+function BusDot({ position, delay, movingRight }) {
   return (
     <div
-      className="absolute"
+      className="absolute flex items-center justify-center"
       style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
     >
       <div
-        className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-md"
+        className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-md absolute"
         style={{ animationDelay: `${delay}s` }}
       />
+      {/* Chevron pointing in direction of travel */}
+      <div
+        className="absolute text-red-500 font-bold text-lg"
+        style={{
+          transform: movingRight ? 'translateX(8px) scaleX(1)' : 'translateX(-8px) scaleX(-1)',
+          opacity: 0.7,
+        }}
+      >
+        ›
+      </div>
     </div>
   )
 }
@@ -143,7 +153,7 @@ function RouteLine({ route, vehicles }) {
           // Create staggered bounce delay from vehicle ref
           const ref = vehicle.MonitoredVehicleJourney?.VehicleRef || String(i)
           const delay = (ref.charCodeAt(ref.length - 1) % 8) * 0.1
-          return <BusDot key={ref} position={pos.pct} delay={delay} />
+          return <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight} />
         })}
       </div>
       <RouteCircle routeId={route.id} />
