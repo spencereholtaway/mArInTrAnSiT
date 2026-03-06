@@ -117,14 +117,16 @@ function BusDot({ position, delay, movingRight }) {
       style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
     >
       <div
-        className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-md absolute"
+        className="animate-bounce absolute text-2xl"
         style={{ animationDelay: `${delay}s` }}
-      />
+      >
+        🚌
+      </div>
       {/* Chevron pointing in direction of travel */}
       <div
         className="absolute text-red-500 font-bold text-lg"
         style={{
-          transform: movingRight ? 'translateX(8px) scaleX(1)' : 'translateX(-8px) scaleX(-1)',
+          transform: movingRight ? 'translateX(12px) scaleX(1)' : 'translateX(-12px) scaleX(-1)',
           opacity: 0.7,
         }}
       >
