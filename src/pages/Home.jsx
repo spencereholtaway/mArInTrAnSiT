@@ -134,7 +134,7 @@ function BusDot({ position, delay, movingRight }) {
       />
       <div
         className="animate-bounce absolute text-2xl"
-        style={{ animationDelay: `${delay}s` }}
+        style={{ animationDelay: `${delay}s`, transform: movingRight ? 'scaleX(1)' : 'scaleX(-1)' }}
       >
         🚌
       </div>
