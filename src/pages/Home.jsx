@@ -306,6 +306,8 @@ export default function Home() {
   const [deviceLocation, setDeviceLocation] = useState(null)
   const [locationOverride, setLocationOverride] = useState(null)
   const [nearestStop, setNearestStop] = useState(null)
+  const [nearbyStops, setNearbyStops] = useState([])
+  const [selectedStop, setSelectedStop] = useState(null)
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -352,48 +354,53 @@ export default function Home() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // Find nearest stop when device location (or override) changes
-  // Only considers display-direction stops so the blue dot always aligns with a tick
+  // Find nearest stop + nearby stops when device location changes
   useEffect(() => {
     const location = locationOverride ?? deviceLocation
     if (!location) return
 
-    let bestStop = null
-    let bestDist = Infinity
-
-    // Only search display-direction stops (these are what the ticks render)
+    // Build list of unique stops with distances (dedup by stopId)
+    const stopDistances = new Map()
     for (const route of routes) {
       for (const stop of route.stops) {
+        if (stopDistances.has(stop.id)) continue
         const d = haversineMeters(location.lat, location.lng, stop.lat, stop.lng)
-        if (d < bestDist) {
-          bestDist = d
-          bestStop = { stopId: stop.id, stopName: stop.name, routeId: route.id, dist: stop.dist, totalDist: route.totalDist }
-        }
+        stopDistances.set(stop.id, { stopId: stop.id, stopName: stop.name, distanceMeters: d })
       }
     }
 
-    if (!bestStop || bestDist > NEARBY_THRESHOLD_METERS) {
-      setNearestStop(null)
-      return
-    }
+    // Sort by distance and take closest 5
+    const sorted = [...stopDistances.values()].sort((a, b) => a.distanceMeters - b.distanceMeters)
+    setNearbyStops(sorted.slice(0, 5))
 
-    // Find all routes (display direction) that serve this stop
-    const { stopId, stopName } = bestStop
+    // Auto-detect if within threshold
+    const closest = sorted[0]
+    if (closest && closest.distanceMeters <= NEARBY_THRESHOLD_METERS) {
+      const stopData = buildStopData(closest.stopId, closest.stopName, closest.distanceMeters)
+      setNearestStop(stopData)
+      setSelectedStop(null)
+    } else {
+      setNearestStop(null)
+    }
+  }, [deviceLocation, locationOverride])
+
+  function buildStopData(stopId, stopName, distanceMeters) {
     const pctByRoute = {}
     const routeIds = []
-
     for (const route of routes) {
       const stop = route.stops.find(s => s.id === stopId)
       if (stop) {
-        pctByRoute[route.id] = route.totalDist > 0
-          ? (stop.dist / route.totalDist) * 100
-          : 0
+        pctByRoute[route.id] = route.totalDist > 0 ? (stop.dist / route.totalDist) * 100 : 0
         routeIds.push(route.id)
       }
     }
+    return { stopId, stopName, distanceMeters, routeIds, pctByRoute }
+  }
 
-    setNearestStop({ stopId, stopName, distanceMeters: bestDist, routeIds, pctByRoute })
-  }, [deviceLocation, locationOverride])
+  function selectNearbyStop(stop) {
+    const stopData = buildStopData(stop.stopId, stop.stopName, stop.distanceMeters)
+    setSelectedStop(stopData)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-clip">
@@ -412,26 +419,55 @@ export default function Home() {
       <div className="px-6 md:px-12 lg:px-24">
 
         <div className="py-8 space-y-6">
-          {/* Your stop panel */}
-          {nearestStop && nearestStop.routeIds.length > 0 && (
-            <div className="liquid-glass p-6 space-y-6">
-              <div className="text-sm font-semibold text-blue-800">
-                Your stop · {nearestStop.stopName}
-              </div>
-              {nearestStop.routeIds.map(routeId => {
-                const route = routes.find(r => r.id === routeId)
-                if (!route) return null
-                return (
-                  <RouteLine
-                    key={routeId}
-                    route={route}
-                    vehicles={vehiclesByLine[routeId] || []}
-                    nearbyStopPct={nearestStop.pctByRoute[routeId]}
-                  />
-                )
-              })}
+          {/* Nearby stops carousel - shown when not auto-detected and no manual selection */}
+          {!nearestStop && !selectedStop && nearbyStops.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-2 -mb-2">
+              {nearbyStops.map(stop => (
+                <button
+                  key={stop.stopId}
+                  onClick={() => selectNearbyStop(stop)}
+                  className="shrink-0 border border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-700 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap"
+                >
+                  {stop.stopName} · {Math.round(stop.distanceMeters)}m
+                </button>
+              ))}
             </div>
           )}
+
+          {/* Your stop panel - auto-detected or manually selected */}
+          {(() => {
+            const activeStop = nearestStop ?? selectedStop
+            if (!activeStop || !activeStop.routeIds.length) return null
+            return (
+              <div className="liquid-glass p-6 space-y-6">
+                <div className="text-sm font-semibold text-blue-800">
+                  Your stop · {activeStop.stopName}
+                </div>
+                {activeStop.routeIds.map(routeId => {
+                  const route = routes.find(r => r.id === routeId)
+                  if (!route) return null
+                  return (
+                    <RouteLine
+                      key={routeId}
+                      route={route}
+                      vehicles={vehiclesByLine[routeId] || []}
+                      nearbyStopPct={activeStop.pctByRoute[routeId]}
+                    />
+                  )
+                })}
+                {selectedStop && !nearestStop && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setSelectedStop(null)}
+                      className="bg-gray-200 text-gray-600 px-3 py-1 rounded text-xs font-medium"
+                    >
+                      Close
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* All lines section */}
           <div className="p-6 space-y-6">
