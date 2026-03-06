@@ -148,18 +148,24 @@ function AlertCircle({ severity }) {
     borderColor = 'border-green-500'
     label = 'No alerts'
   }
+  const isAlert = severity && severity !== 'ok'
+  const circle = (
+    <div className={`w-9 h-9 rounded-full border-2 ${borderColor} bg-white flex items-center justify-center ${isAlert ? 'cursor-pointer hover:brightness-95' : ''}`}>
+      {content}
+    </div>
+  )
   return (
     <div
       className="relative shrink-0"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className={`w-9 h-9 rounded-full border-2 ${borderColor} bg-white flex items-center justify-center`}>
-        {content}
-      </div>
+      {isAlert ? (
+        <a href="https://marintransit.org/alerts" target="_blank" rel="noopener noreferrer">{circle}</a>
+      ) : circle}
       {hovered && (
         <div className="absolute bottom-full right-0 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
-          {label}
+          {label}{isAlert ? ' — click for details' : ''}
         </div>
       )}
     </div>
