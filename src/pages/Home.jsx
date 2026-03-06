@@ -7,6 +7,7 @@ const VEHICLE_URL = import.meta.env.DEV
   ? `/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`
   : `/api/vehicle-monitoring`
 const ALERTS_URL = `/api/service-alerts`
+const STOP_MONITORING_URL = (stopCode) => `/api/stop-monitoring?stopCode=${stopCode}`
 
 const NEARBY_THRESHOLD_METERS = 15
 
@@ -100,6 +101,25 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// Parse StopMonitoring API response into arrival objects
+function parseArrivals(data) {
+  const visits = data?.Siri?.ServiceDelivery?.StopMonitoringDelivery?.MonitoredStopVisit || []
+  const arr = Array.isArray(visits) ? visits : [visits]
+  return arr.map(v => {
+    const journey = v.MonitoredVehicleJourney
+    if (!journey) return null
+    const call = journey.MonitoredCall
+    const expectedTime = call?.ExpectedArrivalTime || call?.AimedArrivalTime
+    const lineRef = journey.LineRef
+    const destination = Array.isArray(journey.DestinationName)
+      ? journey.DestinationName[0]?.value || journey.DestinationName[0]
+      : journey.DestinationName?.value || journey.DestinationName
+    if (!lineRef || !expectedTime) return null
+    const minutesAway = Math.round((new Date(expectedTime) - new Date()) / 60000)
+    return { lineRef, destination, minutesAway }
+  }).filter(Boolean).filter(a => a.minutesAway >= 0).sort((a, b) => a.minutesAway - b.minutesAway)
 }
 
 // Build routes array from GTFS data
@@ -403,6 +423,7 @@ export default function Home() {
   const [nearestStop, setNearestStop] = useState(null)
   const [nearbyStops, setNearbyStops] = useState([])
   const [selectedStop, setSelectedStop] = useState(null)
+  const [arrivalsByStop, setArrivalsByStop] = useState({})
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -471,6 +492,37 @@ export default function Home() {
     }, 1000)
     return () => clearInterval(timer)
   }, [lastUpdated])
+
+  // Fetch arrivals for a set of stopIds and merge into arrivalsByStop
+  async function fetchArrivalsForStops(stopIds) {
+    const results = await Promise.all(
+      stopIds.map(async stopId => {
+        try {
+          const res = await fetch(STOP_MONITORING_URL(stopId))
+          const text = await res.text()
+          const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
+          return { stopId, arrivals: parseArrivals(data) }
+        } catch {
+          return { stopId, arrivals: [] }
+        }
+      })
+    )
+    setArrivalsByStop(prev => {
+      const next = { ...prev }
+      for (const { stopId, arrivals } of results) next[stopId] = arrivals
+      return next
+    })
+  }
+
+  // Fetch arrivals when nearby stops or active stop changes
+  useEffect(() => {
+    const activeStop = nearestStop ?? selectedStop
+    if (activeStop) {
+      fetchArrivalsForStops([activeStop.stopId])
+    } else if (nearbyStops.length > 0) {
+      fetchArrivalsForStops(nearbyStops.map(s => s.stopId))
+    }
+  }, [nearbyStops, nearestStop, selectedStop])
 
   // Watch device location
   useEffect(() => {
@@ -554,16 +606,30 @@ export default function Home() {
               <div className="text-sm font-semibold text-blue-800 mb-2 px-6 md:px-0">Nearest stops</div>
               <div className="md:-mx-12 lg:-mx-24 overflow-x-auto no-scrollbar">
                 <div className="flex gap-3 px-6 md:px-12 lg:px-24 pb-4">
-                  {nearbyStops.map(stop => (
-                    <button
-                      key={stop.stopId}
-                      onClick={() => selectNearbyStop(stop)}
-                      className="liquid-glass shrink-0 px-5 py-3 text-left"
-                    >
-                      <div className="text-sm font-semibold text-blue-800 whitespace-nowrap">{stop.stopName}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{Math.round(stop.distanceMeters)}m away</div>
-                    </button>
-                  ))}
+                  {nearbyStops.map(stop => {
+                    const arrivals = (arrivalsByStop[stop.stopId] || []).slice(0, 3)
+                    return (
+                      <button
+                        key={stop.stopId}
+                        onClick={() => selectNearbyStop(stop)}
+                        className="liquid-glass shrink-0 px-5 py-3 text-left"
+                      >
+                        <div className="text-sm font-semibold text-blue-800 whitespace-nowrap">{stop.stopName}</div>
+                        <div className="text-xs text-gray-400 mt-0.5 mb-2">{Math.round(stop.distanceMeters)}m away</div>
+                        {arrivals.length > 0 ? (
+                          <div className="space-y-1">
+                            {arrivals.map((a, i) => (
+                              <div key={i} className="text-xs text-gray-600 whitespace-nowrap">
+                                <span className="font-semibold">{a.lineRef}</span> to {a.destination} · {a.minutesAway === 0 ? 'Now' : `${a.minutesAway}m`}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-300 italic">Loading…</div>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -575,8 +641,24 @@ export default function Home() {
             if (!activeStop || !activeStop.routeIds.length) return null
             return (
               <div className="liquid-glass p-6 space-y-6">
-                <div className="text-sm font-semibold text-blue-800">
-                  Your stop · {activeStop.stopName}
+                <div>
+                  <div className="text-sm font-semibold text-blue-800 mb-3">
+                    Your stop · {activeStop.stopName}
+                  </div>
+                  {(() => {
+                    const arrivals = (arrivalsByStop[activeStop.stopId] || []).slice(0, 5)
+                    return arrivals.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {arrivals.map((a, i) => (
+                          <div key={i} className="text-xs text-gray-600">
+                            <span className="font-semibold">{a.lineRef}</span> to {a.destination} · {a.minutesAway === 0 ? 'Now' : `${a.minutesAway}m`}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-300 italic">Loading arrivals…</div>
+                    )
+                  })()}
                 </div>
                 {activeStop.routeIds.map(routeId => {
                   const route = routes.find(r => r.id === routeId)
