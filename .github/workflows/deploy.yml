@@ -28,6 +28,8 @@ jobs:
 
       - name: Build project
         run: npm run build
+        env:
+          GITHUB_PAGES: true
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
