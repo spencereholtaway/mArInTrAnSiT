@@ -187,11 +187,15 @@ function BusDot({ position, delay, movingRight }) {
 
 function RouteLine({ route, vehicles, nearbyStopPct }) {
   const routeInfo = routeData[route.id]
+  const firstStop = route.stops[0]?.name || 'Start'
+  const lastStop = route.stops[route.stops.length - 1]?.name || 'End'
   return (
     <div className="flex items-center gap-3">
       <RouteCircle routeId={route.id} />
       <div className="flex-1 relative h-10">
         <div className="absolute left-0 right-0 h-px bg-black" style={{ top: 'calc(50% + 8px)' }} />
+        <div className="absolute left-0 top-full text-xs text-gray-400 mt-1 translate-y-2">{firstStop}</div>
+        <div className="absolute right-0 top-full text-xs text-gray-400 mt-1 translate-y-2 text-right">{lastStop}</div>
         {route.stops.map((stop, i) => {
           const pct = route.totalDist > 0
             ? (stop.dist / route.totalDist) * 100
