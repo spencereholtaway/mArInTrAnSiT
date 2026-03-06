@@ -206,11 +206,90 @@ function RouteLine({ route, vehicles, nearbyStopPct }) {
   )
 }
 
+function DevPanel({ locationOverride, onOverride }) {
+  const [lat, setLat] = useState('')
+  const [lng, setLng] = useState('')
+
+  const presets = ['17', '22', '36', '61', '71'].map(routeId => {
+    const data = routeData[routeId]
+    if (!data) return null
+    const dirs = Object.keys(data.directions)
+    const stop = data.directions[dirs[0]].stops[0]
+    return { name: `${stop.name} (Rt ${routeId})`, lat: stop.lat, lng: stop.lng }
+  }).filter(Boolean)
+
+  function apply() {
+    const parsedLat = parseFloat(lat)
+    const parsedLng = parseFloat(lng)
+    if (!isNaN(parsedLat) && !isNaN(parsedLng)) onOverride({ lat: parsedLat, lng: parsedLng })
+  }
+
+  function clear() {
+    onOverride(null)
+    setLat('')
+    setLng('')
+  }
+
+  function selectPreset(p) {
+    setLat(String(p.lat))
+    setLng(String(p.lng))
+    onOverride({ lat: p.lat, lng: p.lng })
+  }
+
+  return (
+    <div className="border-t-2 border-dashed border-gray-300 mt-8 pt-5 pb-8">
+      <div className="text-xs font-mono font-bold text-gray-400 mb-3 tracking-widest">DEV TOOLS</div>
+      <div className="text-xs font-semibold text-gray-600 mb-2">Simulate Location</div>
+      <div className="flex gap-2 items-center mb-2 flex-wrap">
+        <input
+          type="number" step="any" placeholder="Latitude" value={lat}
+          onChange={e => setLat(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1 text-xs font-mono w-36"
+        />
+        <input
+          type="number" step="any" placeholder="Longitude" value={lng}
+          onChange={e => setLng(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1 text-xs font-mono w-36"
+        />
+        <button onClick={apply} className="bg-blue-500 text-white px-3 py-1 rounded text-xs font-medium">
+          Simulate
+        </button>
+        {locationOverride && (
+          <button onClick={clear} className="bg-gray-200 text-gray-600 px-3 py-1 rounded text-xs font-medium">
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {presets.map(p => (
+          <button
+            key={p.name}
+            onClick={() => selectPreset(p)}
+            className={`border px-2 py-1 rounded text-xs ${
+              locationOverride?.lat === p.lat
+                ? 'border-blue-400 bg-blue-50 text-blue-700'
+                : 'border-gray-300 text-gray-500 hover:border-gray-400'
+            }`}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+      {locationOverride && (
+        <div className="text-xs font-mono text-blue-500 mt-2">
+          Simulating {locationOverride.lat.toFixed(6)}, {locationOverride.lng.toFixed(6)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Home() {
   const [vehiclesByLine, setVehiclesByLine] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
   const [relativeTime, setRelativeTime] = useState('Loading...')
   const [deviceLocation, setDeviceLocation] = useState(null)
+  const [locationOverride, setLocationOverride] = useState(null)
   const [nearestStop, setNearestStop] = useState(null)
 
   useEffect(() => {
@@ -258,9 +337,10 @@ export default function Home() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // Find nearest stop when device location changes
+  // Find nearest stop when device location (or override) changes
   useEffect(() => {
-    if (!deviceLocation) return
+    const location = locationOverride ?? deviceLocation
+    if (!location) return
 
     let bestStop = null
     let bestDist = Infinity
@@ -268,7 +348,7 @@ export default function Home() {
     for (const [routeId, data] of Object.entries(routeData)) {
       for (const dirData of Object.values(data.directions)) {
         for (const stop of dirData.stops) {
-          const d = haversineMeters(deviceLocation.lat, deviceLocation.lng, stop.lat, stop.lng)
+          const d = haversineMeters(location.lat, location.lng, stop.lat, stop.lng)
           if (d < bestDist) {
             bestDist = d
             bestStop = { stopId: stop.id, stopName: stop.name }
@@ -313,7 +393,7 @@ export default function Home() {
     }
 
     setNearestStop({ stopId, stopName, distanceMeters: bestDist, routeIds, pctByRoute })
-  }, [deviceLocation])
+  }, [deviceLocation, locationOverride])
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-clip">
@@ -367,6 +447,10 @@ export default function Home() {
           {routes.map((route) => (
             <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
           ))}
+
+          {import.meta.env.DEV && (
+            <DevPanel locationOverride={locationOverride} onOverride={setLocationOverride} />
+          )}
         </div>
       </div>
     </div>
