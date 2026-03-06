@@ -1,3 +1,35 @@
+import { useState, useEffect } from 'react'
+
+const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
+
+function getBusPosition(vehicle, stops) {
+  const journey = vehicle.MonitoredVehicleJourney
+  const monitoredCall = journey?.MonitoredCall
+  if (!monitoredCall) return null
+
+  const isAtStop = monitoredCall.VehicleAtStop === 'true'
+  const currentStopName = monitoredCall.StopPointName
+  const currentIdx = stops.indexOf(currentStopName)
+
+  if (currentIdx !== -1) {
+    const pct = isAtStop
+      ? (currentIdx / (stops.length - 1)) * 100
+      : ((currentIdx + 0.5) / (stops.length - 1)) * 100
+    return Math.min(100, Math.max(0, pct))
+  }
+
+  // Fall back to onward calls to find position
+  const onwardCalls = journey.OnwardCalls?.OnwardCall || []
+  for (const call of onwardCalls) {
+    const idx = stops.indexOf(call.StopPointName)
+    if (idx !== -1) {
+      return Math.min(100, Math.max(0, ((idx - 0.5) / (stops.length - 1)) * 100))
+    }
+  }
+
+  return null
+}
+
 const routes = [
   { id: '17', name: 'Downtown San Rafael - Sausalito', stops: ["Bridgeway & Caledonia Av","Bridgeway & Turney St","Bridgeway & Napa St","Bridgeway & Easterby St","Bridgeway & Nevada St","Bridgeway & Coloma St","Bridgeway & Gate 5 Rd","Drake Av & Donahue St","Drake Av & Buckelew St","Drake Av & Pacheco St","Drake Av & Donahue St","Shoreline Hwy & Pohono St","Almonte Blvd & Rosemont Ave","Almonte Blvd & Miller Ave","Miller Ave & Reed St","Miller Ave & Locust Ave","Miller Ave & Park Ave","E Blithedale Ave & Hill St","E Blithedale Ave & Walnut Ave","E Blithedale Ave & Elm Ave","E Blithedale Ave & Hilarita Ave","E Blithedale Ave & Nelson Ave","E Blithedale Ave & Roque Moraes Dr"] },
   { id: '22', name: 'Downtown San Rafael - Marin City', stops: ["4th St & Court St","4th St & C St","4th St & E St","4th St & Ida St","4th St & Greenfield Ave","4th St & Santa Margarita Ave","Red Hill Ave & Sequoia Dr","Sir Francis Drake Blvd & Ross Av","Sir Francis Drake Blvd & Bolinas Av","1125 Sir Francis Drake Blvd","College of Marin - Sir Francis Drake Blvd & Elm Av","College Ave & Kent Ave","Magnolia Ave & Frances Ave","Magnolia Ave & Skylark Dr","Magnolia Ave & Bon Air Rd","Magnolia Av & Madrone Av","Magnolia Av & Park Way","Redwood Av & Montecito Dr","Tamalpais Dr & Eastman Av","Tamalpais Dr & Meadowsweet Dr","Tiburon Blvd & Hwy 101 NB-Off Ramp","Reed Blvd & Redwood Hwy","Belvedere Dr & Redwood Hwy Frontage Rd","Redwood Hwy Frontage Rd & De Silva Island Dr"] },
@@ -42,7 +74,18 @@ function StopTick({ index, total }) {
   )
 }
 
-function RouteLine({ route }) {
+function BusDot({ position }) {
+  return (
+    <div
+      className="absolute"
+      style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
+    >
+      <div className="w-3 h-3 bg-red-500 rounded-full animate-bounce shadow-md" />
+    </div>
+  )
+}
+
+function RouteLine({ route, vehicles }) {
   return (
     <div className="flex items-center gap-3">
       <RouteCircle routeId={route.id} />
@@ -53,6 +96,12 @@ function RouteLine({ route }) {
         {route.stops.map((stop, i) => (
           <StopTick key={`${route.id}-${i}`} index={i} total={route.stops.length} />
         ))}
+        {/* Live bus positions */}
+        {vehicles.map((vehicle, i) => {
+          const pos = getBusPosition(vehicle, route.stops)
+          if (pos === null) return null
+          return <BusDot key={vehicle.MonitoredVehicleJourney?.VehicleRef || i} position={pos} />
+        })}
       </div>
       <RouteCircle routeId={route.id} />
     </div>
@@ -60,6 +109,33 @@ function RouteLine({ route }) {
 }
 
 export default function Home() {
+  const [vehiclesByLine, setVehiclesByLine] = useState({})
+
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      try {
+        const res = await fetch(`/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`)
+        const text = await res.text()
+        const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
+        const activities = data?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.VehicleActivity || []
+        const byLine = {}
+        for (const v of activities) {
+          const lineRef = v.MonitoredVehicleJourney?.LineRef
+          if (!lineRef) continue
+          if (!byLine[lineRef]) byLine[lineRef] = []
+          byLine[lineRef].push(v)
+        }
+        setVehiclesByLine(byLine)
+      } catch (err) {
+        console.error('Vehicle fetch failed:', err)
+      }
+    }
+
+    fetchVehicles()
+    const interval = setInterval(fetchVehicles, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full bg-gradient-to-r from-blue-600 to-blue-800 py-20">
@@ -72,7 +148,7 @@ export default function Home() {
 
       <div className="px-6 md:px-12 lg:px-24 py-8 space-y-6">
         {routes.map((route) => (
-          <RouteLine key={route.id} route={route} />
+          <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} />
         ))}
       </div>
     </div>
