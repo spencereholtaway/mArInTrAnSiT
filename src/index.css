@@ -7,6 +7,14 @@ body {
   padding: 0;
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .liquid-glass {
   background: rgba(219, 234, 254, 0.35);
   backdrop-filter: blur(16px);

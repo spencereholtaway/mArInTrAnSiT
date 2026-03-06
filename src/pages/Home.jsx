@@ -499,7 +499,7 @@ export default function Home() {
           {!nearestStop && !selectedStop && nearbyStops.length > 0 && (
             <div>
               <div className="text-sm font-semibold text-blue-800 mb-2">Nearest stops</div>
-              <div className="-mx-6 md:-mx-12 lg:-mx-24 overflow-x-auto">
+              <div className="-mx-6 md:-mx-12 lg:-mx-24 overflow-x-auto no-scrollbar">
                 <div className="flex gap-3 px-6 md:px-12 lg:px-24 pb-4">
                   {nearbyStops.map(stop => (
                     <button
