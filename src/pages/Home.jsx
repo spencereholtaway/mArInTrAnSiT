@@ -125,7 +125,7 @@ function BusDot({ position, delay, movingRight }) {
   return (
     <div
       className="absolute flex items-center justify-center"
-      style={{ left: `${position}%`, top: 'calc(50% + 8px)', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
+      style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
     >
       {/* Pulse ring tied to bounce at 1.5x stagger */}
       <div
