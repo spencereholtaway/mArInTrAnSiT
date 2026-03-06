@@ -127,6 +127,11 @@ function BusDot({ position, delay, movingRight }) {
       className="absolute flex items-center justify-center"
       style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
     >
+      {/* Pulse ring tied to bounce at 1.5x stagger */}
+      <div
+        className="absolute w-8 h-8 rounded-full animate-ping bg-lime-400"
+        style={{ animationDelay: `${delay * 1.5}s` }}
+      />
       <div
         className="animate-bounce absolute text-2xl"
         style={{ animationDelay: `${delay}s` }}
@@ -137,7 +142,7 @@ function BusDot({ position, delay, movingRight }) {
       <div
         className="absolute text-red-500 font-bold text-lg"
         style={{
-          transform: movingRight ? 'translateX(12px) scaleX(1)' : 'translateX(-12px) scaleX(-1)',
+          transform: movingRight ? 'translateX(22px) scaleX(1)' : 'translateX(-22px) scaleX(-1)',
           opacity: 0.7,
         }}
       >
