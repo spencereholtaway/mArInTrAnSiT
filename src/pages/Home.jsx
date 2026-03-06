@@ -574,7 +574,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="px-6 md:px-12 lg:px-24">
+      <div className="md:px-12 lg:px-24">
 
         <div className="py-8 space-y-6">
           {/* Nearby stops carousel - shown when not auto-detected and no manual selection */}
@@ -582,7 +582,7 @@ export default function Home() {
             <div>
               <div className="text-sm font-semibold text-blue-800 mb-2">Nearest stops</div>
               <div className="-mx-6 md:-mx-12 lg:-mx-24 overflow-x-auto no-scrollbar">
-                <div className="flex gap-3 px-6 md:px-12 lg:px-24 pb-4">
+                <div className="flex gap-3 md:px-12 lg:px-24 pb-4">
                   {nearbyStops.map(stop => (
                     <button
                       key={stop.stopId}
