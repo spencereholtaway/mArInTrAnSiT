@@ -353,6 +353,7 @@ export default function Home() {
   }, [])
 
   // Find nearest stop when device location (or override) changes
+  // Only considers display-direction stops so the blue dot always aligns with a tick
   useEffect(() => {
     const location = locationOverride ?? deviceLocation
     if (!location) return
@@ -360,14 +361,13 @@ export default function Home() {
     let bestStop = null
     let bestDist = Infinity
 
-    for (const [routeId, data] of Object.entries(routeData)) {
-      for (const dirData of Object.values(data.directions)) {
-        for (const stop of dirData.stops) {
-          const d = haversineMeters(location.lat, location.lng, stop.lat, stop.lng)
-          if (d < bestDist) {
-            bestDist = d
-            bestStop = { stopId: stop.id, stopName: stop.name }
-          }
+    // Only search display-direction stops (these are what the ticks render)
+    for (const route of routes) {
+      for (const stop of route.stops) {
+        const d = haversineMeters(location.lat, location.lng, stop.lat, stop.lng)
+        if (d < bestDist) {
+          bestDist = d
+          bestStop = { stopId: stop.id, stopName: stop.name, routeId: route.id, dist: stop.dist, totalDist: route.totalDist }
         }
       }
     }
@@ -377,33 +377,18 @@ export default function Home() {
       return
     }
 
-    // Find all routes serving this stop and their pct on the display line
+    // Find all routes (display direction) that serve this stop
     const { stopId, stopName } = bestStop
     const pctByRoute = {}
     const routeIds = []
 
-    for (const [routeId, data] of Object.entries(routeData)) {
-      const dirs = Object.keys(data.directions)
-      const displayDir = dirs[0]
-      const displayDirData = data.directions[displayDir]
-
-      // Check display direction first
-      const stopInDisplay = displayDirData.stops.find(s => s.id === stopId)
-      if (stopInDisplay) {
-        pctByRoute[routeId] = (stopInDisplay.dist / displayDirData.totalDist) * 100
-        routeIds.push(routeId)
-        continue
-      }
-
-      // Check reverse directions
-      for (const [dir, dirData] of Object.entries(data.directions)) {
-        if (dir === displayDir) continue
-        const stopInReverse = dirData.stops.find(s => s.id === stopId)
-        if (stopInReverse) {
-          pctByRoute[routeId] = 100 - (stopInReverse.dist / dirData.totalDist) * 100
-          routeIds.push(routeId)
-          break
-        }
+    for (const route of routes) {
+      const stop = route.stops.find(s => s.id === stopId)
+      if (stop) {
+        pctByRoute[route.id] = route.totalDist > 0
+          ? (stop.dist / route.totalDist) * 100
+          : 0
+        routeIds.push(route.id)
       }
     }
 
