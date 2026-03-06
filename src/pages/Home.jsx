@@ -421,14 +421,15 @@ export default function Home() {
         <div className="py-8 space-y-6">
           {/* Nearby stops carousel - shown when not auto-detected and no manual selection */}
           {!nearestStop && !selectedStop && nearbyStops.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-2 -mb-2">
+            <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
               {nearbyStops.map(stop => (
                 <button
                   key={stop.stopId}
                   onClick={() => selectNearbyStop(stop)}
-                  className="shrink-0 border border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-700 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap"
+                  className="liquid-glass shrink-0 px-5 py-3 text-left"
                 >
-                  {stop.stopName} · {Math.round(stop.distanceMeters)}m
+                  <div className="text-sm font-semibold text-blue-800 whitespace-nowrap">{stop.stopName}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{Math.round(stop.distanceMeters)}m away</div>
                 </button>
               ))}
             </div>
