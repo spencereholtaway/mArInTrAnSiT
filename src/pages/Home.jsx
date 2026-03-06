@@ -194,8 +194,8 @@ function RouteLine({ route, vehicles, nearbyStopPct }) {
       <RouteCircle routeId={route.id} />
       <div className="flex-1 relative h-10">
         <div className="absolute left-0 right-0 h-px bg-black" style={{ top: 'calc(50% + 8px)' }} />
-        <div className="absolute left-0 text-xs text-gray-400 whitespace-nowrap" style={{ top: 'calc(50% + 12px)' }}>{firstStop}</div>
-        <div className="absolute right-0 text-xs text-gray-400 whitespace-nowrap text-right" style={{ top: 'calc(50% + 12px)' }}>{lastStop}</div>
+        <div className="absolute left-0 text-gray-400 whitespace-nowrap" style={{ top: 'calc(50% + 12px)', fontSize: '10px' }}>{firstStop}</div>
+        <div className="absolute right-0 text-gray-400 whitespace-nowrap text-right" style={{ top: 'calc(50% + 12px)', fontSize: '10px' }}>{lastStop}</div>
         {route.stops.map((stop, i) => {
           const pct = route.totalDist > 0
             ? (stop.dist / route.totalDist) * 100
