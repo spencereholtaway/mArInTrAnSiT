@@ -125,7 +125,7 @@ function BusDot({ position, delay, movingRight }) {
   return (
     <div
       className="absolute flex items-center justify-center"
-      style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
+      style={{ left: `${position}%`, top: 'calc(50% + 8px)', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
     >
       {/* Pulse ring tied to bounce at 1.5x stagger */}
       <div
@@ -151,8 +151,8 @@ function RouteLine({ route, vehicles }) {
   return (
     <div className="flex items-center gap-3">
       <RouteCircle routeId={route.id} />
-      <div className="flex-1 relative h-8">
-        <div className="absolute left-0 right-0 top-1/2 h-px bg-black" />
+      <div className="flex-1 relative h-10">
+        <div className="absolute left-0 right-0 h-px bg-black" style={{ top: 'calc(50% + 8px)' }} />
         {route.stops.map((stop, i) => {
           const pct = route.totalDist > 0
             ? (stop.dist / route.totalDist) * 100
