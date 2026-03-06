@@ -425,8 +425,8 @@ export default function Home() {
         <div className="py-8 space-y-6">
           {/* Your stop panel */}
           {nearestStop && nearestStop.routeIds.length > 0 && (
-            <div className="liquid-glass px-4 pt-3 pb-4 space-y-6">
-              <div className="text-sm font-semibold text-blue-800">
+            <div className="liquid-glass pt-3 pb-4 space-y-6">
+              <div className="text-sm font-semibold text-blue-800 px-4">
                 Your stop · {nearestStop.stopName}
               </div>
               {nearestStop.routeIds.map(routeId => {
