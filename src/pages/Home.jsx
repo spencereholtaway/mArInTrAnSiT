@@ -236,9 +236,11 @@ function StopTick({ pct, stopName, onTop }) {
       className="absolute cursor-pointer"
       style={{
         left: `${pct}%`,
-        top: onTop ? '35%' : '65%',
-        width: '7px',
-        height: '7px',
+        // Center circles on the racetrack border edges
+        // Border spans 0-2px (top) and 54-56px (bottom), centers at 1px and 55px
+        top: onTop ? '1px' : 'calc(100% - 1px)',
+        width: '9px',
+        height: '9px',
         backgroundColor: 'white',
         border: '2px solid #374151',
         borderRadius: '50%',
@@ -266,7 +268,7 @@ function NearbyStopMarker({ pct }) {
       className="absolute flex items-center justify-center"
       style={{
         left: `${pct}%`,
-        top: '35%',
+        top: '-1px',
         transform: 'translate(-50%, -50%)',
         zIndex: 5,
       }}
@@ -285,7 +287,7 @@ function BusDot({ position, delay, movingRight, lineRef, destination, nextStop, 
     nextMins = m <= 0 ? 'Now' : `${m}m`
   }
   // Top track (35%) for display-direction buses, bottom track (65%) for return-direction buses
-  const trackTop = movingRight ? '35%' : '65%'
+  const trackTop = movingRight ? '-1px' : 'calc(100% + 1px)'
   return (
     <div
       className="absolute flex items-center justify-center cursor-pointer"
@@ -326,7 +328,7 @@ function BusDot({ position, delay, movingRight, lineRef, destination, nextStop, 
   )
 }
 
-function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
+function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses }) {
   const routeInfo = routeData[route.id]
   return (
     // Align circles (36px) to vertical center of the 56px pill → mt-[10px]
@@ -336,22 +338,40 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
       <div className="flex-1 min-w-0">
         {/* Racetrack: rounded rectangle with two tracks inside */}
         <div className="relative" style={{ height: '56px' }}>
-          {/* Pill border */}
+          {/* Racetrack border — this IS the track */}
           <div className="absolute inset-0 border-2 border-gray-700 rounded-xl" />
 
-          {/* Top track line — display direction (left → right) */}
-          <div className="absolute bg-gray-300" style={{ left: '3%', right: '3%', height: '1px', top: '35%' }} />
-
-          {/* Bottom track line — return direction (right → left) */}
-          <div className="absolute bg-gray-300" style={{ left: '3%', right: '3%', height: '1px', top: '65%' }} />
+          {/* Terminus labels inside the racetrack, vertically centered */}
+          <div className="absolute inset-0 flex items-center pointer-events-none" style={{ justifyContent: route.firstStop.trim() === route.lastStop.trim() ? 'center' : 'space-between', paddingLeft: route.firstStop.trim() === route.lastStop.trim() ? 0 : '12px', paddingRight: route.firstStop.trim() === route.lastStop.trim() ? 0 : '12px' }}>
+            {route.firstStop.trim() === route.lastStop.trim() ? (
+              // Same terminus: show once, centered
+              <span className="text-gray-500 truncate leading-tight" style={{ fontSize: '9px', maxWidth: '60%' }}>{route.firstStop}</span>
+            ) : (
+              // Different terminals: show both on edges
+              <>
+                <span className="text-gray-500 truncate leading-tight" style={{ fontSize: '9px', maxWidth: '40%' }}>{route.firstStop}</span>
+                <span className="text-gray-500 text-right truncate leading-tight" style={{ fontSize: '9px', maxWidth: '40%' }}>{route.lastStop}</span>
+              </>
+            )}
+          </div>
 
           {/* Display direction stop ticks (top) */}
-          {route.topStops.map(stop => (
+          {/* For circular routes (firstStop === lastStop), the last topStop is the same
+              physical location as the first — remove it to avoid a duplicate dot */}
+          {(route.firstStop.trim() === route.lastStop.trim()
+            ? route.topStops.slice(0, -1)
+            : route.topStops
+          ).map(stop => (
             <StopTick key={`top-${stop.id}`} pct={stop.pct} stopName={stop.name} onTop={true} />
           ))}
 
           {/* Return direction stop ticks (bottom) */}
-          {route.bottomStops.map(stop => (
+          {/* For circular routes, the return direction's terminal dots at both ends
+              are the same stop — remove first and last to avoid duplicates */}
+          {(route.firstStop.trim() === route.lastStop.trim()
+            ? route.bottomStops.slice(1, -1)
+            : route.bottomStops
+          ).map(stop => (
             <StopTick key={`bot-${stop.id}`} pct={stop.pct} stopName={stop.name} onTop={false} />
           ))}
 
@@ -359,7 +379,7 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
           {nearbyStopPct !== undefined && <NearbyStopMarker pct={nearbyStopPct} />}
 
           {/* Vehicle dots — split to top or bottom track by movingRight */}
-          {vehicles.map((vehicle, i) => {
+          {showBuses && vehicles.map((vehicle, i) => {
             const pos = getBusPosition(vehicle, routeInfo)
             if (pos === null) return null
             const journey = vehicle.MonitoredVehicleJourney
@@ -375,11 +395,6 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
           })}
         </div>
 
-        {/* Terminal labels below the pill */}
-        <div className="flex justify-between mt-1">
-          <div className="text-gray-400 truncate leading-tight" style={{ fontSize: '9px', maxWidth: '45%' }}>{route.firstStop}</div>
-          <div className="text-gray-400 text-right truncate leading-tight" style={{ fontSize: '9px', maxWidth: '45%' }}>{route.lastStop}</div>
-        </div>
       </div>
 
       <div className="mt-[10px] shrink-0"><AlertCircle severity={alertSeverity} /></div>
@@ -394,7 +409,7 @@ const ALERT_OPTIONS = [
   { value: 'severe', label: 'Severe' },
 ]
 
-function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverride, onGoLive }) {
+function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverride, onGoLive, showBuses, onShowBusesChange }) {
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
 
@@ -454,6 +469,18 @@ function DevPanel({ locationOverride, onOverride, alertOverrides, onAlertOverrid
           Simulating {locationOverride.lat.toFixed(6)}, {locationOverride.lng.toFixed(6)}
         </div>
       )}
+
+      <div className="mt-6">
+        <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showBuses}
+            onChange={(e) => onShowBusesChange(e.target.checked)}
+            className="w-4 h-4"
+          />
+          Display buses?
+        </label>
+      </div>
 
       <div className="mt-6">
         <div className="text-xs font-semibold text-gray-600 mb-2">Simulate Service Alerts</div>
@@ -521,6 +548,7 @@ export default function Home() {
   const [nearbyStops, setNearbyStops] = useState([])
   const [selectedStop, setSelectedStop] = useState(null)
   const [arrivalsByStop, setArrivalsByStop] = useState({})
+  const [showBuses, setShowBuses] = useState(true)
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -770,6 +798,7 @@ export default function Home() {
                       vehicles={vehiclesByLine[routeId] || []}
                       nearbyStopPct={activeStop.pctByRoute[routeId]}
                       alertSeverity={alertOverrides[routeId] ?? (alertsByLine === null ? null : (alertsByLine[routeId] || 'ok'))}
+                      showBuses={showBuses}
                     />
                   )
                 })}
@@ -790,7 +819,7 @@ export default function Home() {
           {/* All lines section */}
           <div className="p-6 space-y-6">
             {routes.map((route) => (
-              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={alertOverrides[route.id] ?? (alertsByLine === null ? null : (alertsByLine[route.id] || 'ok'))} />
+              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={alertOverrides[route.id] ?? (alertsByLine === null ? null : (alertsByLine[route.id] || 'ok'))} showBuses={showBuses} />
             ))}
           </div>
 
@@ -805,6 +834,8 @@ export default function Home() {
               return next
             })}
             onGoLive={() => { setLocationOverride(null); setAlertOverrides({}) }}
+            showBuses={showBuses}
+            onShowBusesChange={setShowBuses}
           />
         </div>
       </div>
