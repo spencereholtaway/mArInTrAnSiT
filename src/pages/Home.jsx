@@ -270,19 +270,25 @@ function useSmartTooltipPosition(tooltipRef, isVisible, orientation = 'vertical'
 
     if (orientation === 'vertical') {
       // For above/below tooltips
+      // 'top' = position below, 'bottom' = position above
       if (rect.top < 0) {
-        setPosition('bottom')
-      } else if (rect.bottom > window.innerHeight) {
+        // Tooltip going off top of screen, position it below instead
         setPosition('top')
+      } else if (rect.bottom > window.innerHeight) {
+        // Tooltip going off bottom of screen, position it above instead
+        setPosition('bottom')
       } else {
         setPosition(null) // Use default
       }
     } else if (orientation === 'horizontal') {
       // For left/right tooltips
+      // 'left' = position right, 'right' = position left
       if (rect.left < 0) {
-        setPosition('right')
-      } else if (rect.right > window.innerWidth) {
+        // Tooltip going off left edge, position it right instead
         setPosition('left')
+      } else if (rect.right > window.innerWidth) {
+        // Tooltip going off right edge, position it left instead
+        setPosition('right')
       } else {
         setPosition(null) // Use default
       }
