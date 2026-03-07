@@ -472,6 +472,34 @@ function VerticalStopTick({ top, side, stopName, leftOverride }) {
   )
 }
 
+function VerticalYourStopMarker({ top, stopName }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  const parentRef = useRef(null)
+  const adjustedPos = useSmartTooltipPosition(parentRef, showTooltip, 'horizontal')
+  const tooltipStyle = {
+    top: '50%',
+    transform: 'translateY(-50%)',
+    ...(adjustedPos === 'right' ? { right: 'calc(100% + 8px)' } : { left: 'calc(100% + 8px)' }),
+  }
+  return (
+    <div
+      ref={parentRef}
+      className="absolute flex items-center justify-center cursor-pointer"
+      style={{ top, left: '1px', transform: 'translate(-50%, -50%)', zIndex: 5 }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <div className="absolute w-5 h-5 rounded-full bg-blue-400 animate-ping" />
+      <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow relative" />
+      {showTooltip && stopName && (
+        <div className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap" style={{ ...tooltipStyle, zIndex: 9999 }}>
+          {stopName}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop, nextArrivalTime }) {
   const [hovered, setHovered] = useState(false)
   const parentRef = useRef(null)
@@ -522,7 +550,7 @@ function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop
   )
 }
 
-function VerticalRacetrack({ route, vehicles, routeInfo, showBuses }) {
+function VerticalRacetrack({ route, vehicles, routeInfo, showBuses, yourStopPct, yourStopName }) {
   const isCircular = route.firstStop.trim() === route.lastStop.trim()
 
   // Deduplicate terminus candidates from both tracks by ID and name,
@@ -590,6 +618,12 @@ function VerticalRacetrack({ route, vehicles, routeInfo, showBuses }) {
       {rightStops.map(stop => (
         <VerticalStopTick key={`right-${stop.id}`} top={racetrackTop(stop.pct)} side="right" stopName={stop.name} />
       ))}
+
+      {/* Your stop marker — on the left (outbound) track edge */}
+      {yourStopPct != null && (
+        <VerticalYourStopMarker top={racetrackTop(yourStopPct)} stopName={yourStopName} />
+      )}
+
 
       {/* Bus dots */}
       {showBuses && vehicles.map((vehicle, i) => {
@@ -739,7 +773,7 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses, o
   )
 }
 
-function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack }) {
+function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack, yourStopPct, yourStopName }) {
   const routeInfo = routeData[route.id]
   let alertLabel
   if (alertSeverity === null) alertLabel = 'Checking for alerts…'
@@ -773,6 +807,8 @@ function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack }) 
           vehicles={vehicles}
           routeInfo={routeInfo}
           showBuses={showBuses}
+          yourStopPct={yourStopPct}
+          yourStopName={yourStopName}
         />
       </div>
     </div>
@@ -1089,6 +1125,9 @@ export default function Home() {
   if (selectedRouteId) {
     const selectedRoute = routes.find(r => r.id === selectedRouteId)
     if (selectedRoute) {
+      const activeStop = nearestStop ?? selectedStop
+      const yourStopPct = activeStop?.pctByRoute?.[selectedRouteId]
+      const yourStopName = activeStop?.stopName
       return (
         <RouteDetailView
           route={selectedRoute}
@@ -1096,6 +1135,8 @@ export default function Home() {
           alertSeverity={getAlertStatus(selectedRouteId, alertOverrides, alertsByLine, vehiclesByLine)}
           showBuses={showBuses}
           onBack={() => setSelectedRouteId(null)}
+          yourStopPct={yourStopPct}
+          yourStopName={yourStopName}
         />
       )
     }
@@ -1193,6 +1234,7 @@ export default function Home() {
                       nearbyStopPct={activeStop.pctByRoute[routeId]}
                       alertSeverity={getAlertStatus(routeId, alertOverrides, alertsByLine, vehiclesByLine)}
                       showBuses={showBuses}
+                      onClick={() => setSelectedRouteId(routeId)}
                     />
                   )
                 })}
