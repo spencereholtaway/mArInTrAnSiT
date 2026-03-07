@@ -237,12 +237,13 @@ function StopTick({ pct, stopName, onTop }) {
       style={{
         left: `${pct}%`,
         top: onTop ? '35%' : '65%',
-        width: '1px',
-        height: '10px',
-        backgroundColor: '#374151',
-        // Top ticks hang downward from the track; bottom ticks hang upward
-        transform: onTop ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
-        zIndex: 2,
+        width: '7px',
+        height: '7px',
+        backgroundColor: 'white',
+        border: '2px solid #374151',
+        borderRadius: '50%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: 3,
       }}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
