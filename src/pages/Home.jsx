@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Smile, Info, TriangleAlert, CircleX, Loader } from 'lucide-react'
+import { Smile, Info, TriangleAlert, CircleX, Loader, Moon } from 'lucide-react'
 import routeData from '../data/routeData.json'
 
 const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
@@ -131,6 +131,18 @@ function parseArrivals(data) {
   })
 }
 
+// Determine alert status, including 'not_running' if no buses and no alerts
+function getAlertStatus(routeId, alertOverrides, alertsByLine, vehiclesByLine) {
+  const override = alertOverrides[routeId]
+  if (override !== undefined) return override
+  if (alertsByLine === null) return null
+  const baseSeverity = alertsByLine[routeId] || 'ok'
+  if (baseSeverity === 'ok' && (!vehiclesByLine[routeId] || vehiclesByLine[routeId].length === 0)) {
+    return 'not_running'
+  }
+  return baseSeverity
+}
+
 // Build routes array from GTFS data
 const routes = Object.entries(routeData).map(([id, data]) => {
   const dirs = Object.keys(data.directions)
@@ -181,13 +193,17 @@ function RouteCircle({ routeId }) {
 }
 
 function AlertCircle({ severity }) {
-  // severity: null=loading, undefined/no entry=ok, 'info'/'normal'/'undefined'=info, 'slight'=warning, 'severe'=severe
+  // severity: null=loading, undefined/no entry=ok, 'not_running'=no buses, 'info'/'normal'/'undefined'=info, 'slight'=warning, 'severe'=severe
   const [hovered, setHovered] = useState(false)
   let content, borderColor, label
   if (severity === null) {
     content = <Loader size={18} className="text-gray-400 animate-spin" />
     borderColor = 'border-gray-400'
     label = 'Checking for alerts…'
+  } else if (severity === 'not_running') {
+    content = <Moon size={18} className="text-blue-600" />
+    borderColor = 'border-blue-600'
+    label = 'Not running'
   } else if (severity === 'severe') {
     content = <CircleX size={18} className="text-red-500" />
     borderColor = 'border-red-500'
@@ -205,7 +221,7 @@ function AlertCircle({ severity }) {
     borderColor = 'border-green-500'
     label = 'No alerts'
   }
-  const isAlert = severity && severity !== 'ok'
+  const isAlert = severity && severity !== 'ok' && severity !== 'not_running'
   const circle = (
     <div className={`w-9 h-9 rounded-full border-2 ${borderColor} bg-white flex items-center justify-center ${isAlert ? 'cursor-pointer hover:brightness-95' : ''}`}>
       {content}
@@ -229,16 +245,24 @@ function AlertCircle({ severity }) {
   )
 }
 
-function StopTick({ pct, stopName, onTop }) {
+// Map route percentage (0-100) to CSS left on the horizontal section only,
+// leaving the curved ends (rounded-xl = 12px radius) clear for terminus stops.
+function racetrackLeft(pct) {
+  return `calc(12px + ${pct / 100} * (100% - 24px))`
+}
+
+function StopTick({ left, top: topProp, stopName, onTop }) {
   const [showTooltip, setShowTooltip] = useState(false)
+  // topProp takes precedence; otherwise derive from onTop
+  const isTop = onTop === true
+  const isBottom = onTop === false
+  const resolvedTop = topProp !== undefined ? topProp : (isTop ? '1px' : isBottom ? 'calc(100% - 1px)' : '50%')
   return (
     <div
       className="absolute cursor-pointer"
       style={{
-        left: `${pct}%`,
-        // Center circles on the racetrack border edges
-        // Border spans 0-2px (top) and 54-56px (bottom), centers at 1px and 55px
-        top: onTop ? '1px' : 'calc(100% - 1px)',
+        left,
+        top: resolvedTop,
         width: '9px',
         height: '9px',
         backgroundColor: 'white',
@@ -253,7 +277,7 @@ function StopTick({ pct, stopName, onTop }) {
       {showTooltip && (
         <div
           className="absolute left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
-          style={onTop ? { bottom: 'calc(100% + 6px)' } : { top: 'calc(100% + 6px)' }}
+          style={isTop ? { bottom: 'calc(100% + 6px)' } : { top: 'calc(100% + 6px)' }}
         >
           {stopName}
         </div>
@@ -262,12 +286,12 @@ function StopTick({ pct, stopName, onTop }) {
   )
 }
 
-function NearbyStopMarker({ pct }) {
+function NearbyStopMarker({ left }) {
   return (
     <div
       className="absolute flex items-center justify-center"
       style={{
-        left: `${pct}%`,
+        left,
         top: '-1px',
         transform: 'translate(-50%, -50%)',
         zIndex: 5,
@@ -279,19 +303,18 @@ function NearbyStopMarker({ pct }) {
   )
 }
 
-function BusDot({ position, delay, movingRight, lineRef, destination, nextStop, nextArrivalTime }) {
+function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, nextArrivalTime }) {
   const [hovered, setHovered] = useState(false)
   let nextMins = null
   if (nextArrivalTime) {
     const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
     nextMins = m <= 0 ? 'Now' : `${m}m`
   }
-  // Top track (35%) for display-direction buses, bottom track (65%) for return-direction buses
   const trackTop = movingRight ? '-1px' : 'calc(100% + 1px)'
   return (
     <div
       className="absolute flex items-center justify-center cursor-pointer"
-      style={{ left: `${position}%`, top: trackTop, width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
+      style={{ left, top: trackTop, width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -355,30 +378,72 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses })
             )}
           </div>
 
-          {/* Display direction stop ticks (top) */}
-          {/* For circular routes (firstStop === lastStop), the last topStop is the same
-              physical location as the first — remove it to avoid a duplicate dot */}
-          {(route.firstStop.trim() === route.lastStop.trim()
-            ? route.topStops.slice(0, -1)
-            : route.topStops
-          ).map(stop => (
-            <StopTick key={`top-${stop.id}`} pct={stop.pct} stopName={stop.name} onTop={true} />
-          ))}
+          {/* Stop ticks — terminus stops on curved ends, others on horizontal sections */}
+          {(() => {
+            const isCircular = route.firstStop.trim() === route.lastStop.trim()
+            const topStops = isCircular ? route.topStops.slice(0, -1) : route.topStops
+            const bottomStops = isCircular ? route.bottomStops.slice(1, -1) : route.bottomStops
+            const topStopIds = new Set(topStops.map(s => s.id))
 
-          {/* Return direction stop ticks (bottom) */}
-          {/* For circular routes, the return direction's terminal dots at both ends
-              are the same stop — remove first and last to avoid duplicates */}
-          {(route.firstStop.trim() === route.lastStop.trim()
-            ? route.bottomStops.slice(1, -1)
-            : route.bottomStops
-          ).map(stop => (
-            <StopTick key={`bot-${stop.id}`} pct={stop.pct} stopName={stop.name} onTop={false} />
-          ))}
+            // Collect unique terminus candidates from both tracks.
+            // Use pct to determine which end: ≤50 → left, >50 → right.
+            const leftTermini = []
+            const rightTermini = []
+            const seenIds = new Set()
+
+            const terminusCandidates = [
+              route.topStops[0],
+              route.topStops[route.topStops.length - 1],
+              route.bottomStops[0],
+              route.bottomStops[route.bottomStops.length - 1],
+            ]
+
+            for (const stop of terminusCandidates) {
+              if (!stop || seenIds.has(stop.id)) continue
+              seenIds.add(stop.id)
+              const entry = { id: stop.id, name: stop.name, pct: stop.pct, fromTop: topStopIds.has(stop.id) }
+              if (stop.pct <= 50) leftTermini.push(entry)
+              else rightTermini.push(entry)
+            }
+
+            // Sort each group: top-track stops first (higher on screen)
+            leftTermini.sort((a, b) => (a.fromTop ? 0 : 1) - (b.fromTop ? 0 : 1))
+            rightTermini.sort((a, b) => (a.fromTop ? 0 : 1) - (b.fromTop ? 0 : 1))
+
+            // Vertical distribution: evenly space N stops → (1/(N+1), 2/(N+1), …)
+            const distributeVertically = (stops) =>
+              stops.map((_, i) => `${((i + 1) / (stops.length + 1)) * 100}%`)
+
+            const leftTops  = distributeVertically(leftTermini)
+            const rightTops = distributeVertically(rightTermini)
+
+            const terminusIdSet = new Set([...leftTermini, ...rightTermini].map(s => s.id))
+
+            const elements = []
+
+            leftTermini.forEach((stop, i) => elements.push(
+              <StopTick key={`tl-${stop.id}`} left="0%" top={leftTops[i]} stopName={stop.name} />
+            ))
+            rightTermini.forEach((stop, i) => elements.push(
+              <StopTick key={`tr-${stop.id}`} left="100%" top={rightTops[i]} stopName={stop.name} />
+            ))
+
+            topStops.forEach(stop => {
+              if (terminusIdSet.has(stop.id)) return
+              elements.push(<StopTick key={`top-${stop.id}`} left={racetrackLeft(stop.pct)} stopName={stop.name} onTop={true} />)
+            })
+            bottomStops.forEach(stop => {
+              if (terminusIdSet.has(stop.id)) return
+              elements.push(<StopTick key={`bot-${stop.id}`} left={racetrackLeft(stop.pct)} stopName={stop.name} onTop={false} />)
+            })
+
+            return elements
+          })()}
 
           {/* Nearby stop location marker (on top/display track) */}
-          {nearbyStopPct !== undefined && <NearbyStopMarker pct={nearbyStopPct} />}
+          {nearbyStopPct !== undefined && <NearbyStopMarker left={racetrackLeft(nearbyStopPct)} />}
 
-          {/* Vehicle dots — split to top or bottom track by movingRight */}
+          {/* Vehicle dots — mapped to horizontal section */}
           {showBuses && vehicles.map((vehicle, i) => {
             const pos = getBusPosition(vehicle, routeInfo)
             if (pos === null) return null
@@ -389,7 +454,7 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses })
             const nextStop = journey?.MonitoredCall?.StopPointName || ''
             const nextArrivalTime = journey?.MonitoredCall?.ExpectedArrivalTime || journey?.MonitoredCall?.AimedArrivalTime || ''
             return (
-              <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight}
+              <BusDot key={ref} left={racetrackLeft(pos.pct)} delay={delay} movingRight={pos.movingRight}
                 lineRef={route.id} destination={destination} nextStop={nextStop} nextArrivalTime={nextArrivalTime} />
             )
           })}
@@ -797,7 +862,7 @@ export default function Home() {
                       route={route}
                       vehicles={vehiclesByLine[routeId] || []}
                       nearbyStopPct={activeStop.pctByRoute[routeId]}
-                      alertSeverity={alertOverrides[routeId] ?? (alertsByLine === null ? null : (alertsByLine[routeId] || 'ok'))}
+                      alertSeverity={getAlertStatus(routeId, alertOverrides, alertsByLine, vehiclesByLine)}
                       showBuses={showBuses}
                     />
                   )
@@ -817,9 +882,9 @@ export default function Home() {
           })()}
 
           {/* All lines section */}
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-12">
             {routes.map((route) => (
-              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={alertOverrides[route.id] ?? (alertsByLine === null ? null : (alertsByLine[route.id] || 'ok'))} showBuses={showBuses} />
+              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)} showBuses={showBuses} />
             ))}
           </div>
 
