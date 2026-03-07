@@ -881,12 +881,36 @@ export default function Home() {
             )
           })()}
 
-          {/* All lines section */}
-          <div className="p-6 space-y-12">
-            {routes.map((route) => (
-              <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)} showBuses={showBuses} />
-            ))}
-          </div>
+          {/* All lines section — separate running from not running */}
+          {(() => {
+            const runningRoutes = routes.filter(route => getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine) !== 'not_running')
+            const notRunningRoutes = routes.filter(route => getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine) === 'not_running')
+
+            return (
+              <>
+                {/* Running routes */}
+                {runningRoutes.length > 0 && (
+                  <div className="p-6 space-y-12">
+                    {runningRoutes.map((route) => (
+                      <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)} showBuses={showBuses} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Not running routes */}
+                {notRunningRoutes.length > 0 && (
+                  <div>
+                    <div className="text-sm font-semibold text-blue-800 mb-2 px-6 md:px-0">Routes not currently running</div>
+                    <div className="p-6 space-y-12">
+                      {notRunningRoutes.map((route) => (
+                        <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)} showBuses={showBuses} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
 
           <DevPanel
             locationOverride={locationOverride}
