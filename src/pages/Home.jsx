@@ -500,6 +500,37 @@ function VerticalYourStopMarker({ top, stopName }) {
   )
 }
 
+function VerticalNearestStopMarker({ top, side, stopName }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  const parentRef = useRef(null)
+  const adjustedPos = useSmartTooltipPosition(parentRef, showTooltip, 'horizontal')
+  const tooltipStyle = {
+    top: '50%',
+    transform: 'translateY(-50%)',
+    ...(adjustedPos === 'right' ? { right: 'calc(100% + 8px)' } : { left: 'calc(100% + 8px)' }),
+  }
+  const posStyle = side === 'left'
+    ? { top, left: '1px', transform: 'translate(-50%, -50%)' }
+    : { top, right: '1px', transform: 'translate(50%, -50%)' }
+  return (
+    <div
+      ref={parentRef}
+      className="absolute flex items-center justify-center cursor-pointer"
+      style={{ ...posStyle, zIndex: 5 }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <div className="absolute w-5 h-5 rounded-full bg-blue-400 animate-ping" />
+      <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow relative" />
+      {showTooltip && stopName && (
+        <div className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap" style={{ ...tooltipStyle, zIndex: 9999 }}>
+          {stopName}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop, nextArrivalTime }) {
   const [hovered, setHovered] = useState(false)
   const parentRef = useRef(null)
@@ -550,8 +581,12 @@ function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop
   )
 }
 
-function VerticalRacetrack({ route, vehicles, routeInfo, showBuses, yourStopPct, yourStopName }) {
+function VerticalRacetrack({ route, vehicles, routeInfo, showBuses, yourStopPct, yourStopName, outboundInfo, returnInfo }) {
   const isCircular = route.firstStop.trim() === route.lastStop.trim()
+  const dirs = Object.keys(routeInfo.directions)
+  const displayStops = routeInfo.directions[dirs[0]].stops
+  const topTerminalName = displayStops[0]?.name || ''
+  const bottomTerminalName = displayStops[displayStops.length - 1]?.name || ''
 
   // Deduplicate terminus candidates from both tracks by ID and name,
   // split into top-cap (pct ≤ 50) and bottom-cap (pct > 50).
@@ -619,11 +654,74 @@ function VerticalRacetrack({ route, vehicles, routeInfo, showBuses, yourStopPct,
         <VerticalStopTick key={`right-${stop.id}`} top={racetrackTop(stop.pct)} side="right" stopName={stop.name} />
       ))}
 
-      {/* Your stop marker — on the left (outbound) track edge */}
-      {yourStopPct != null && (
+      {/* Your stop marker — only shown when no per-direction markers available */}
+      {yourStopPct != null && !outboundInfo && !returnInfo && (
         <VerticalYourStopMarker top={racetrackTop(yourStopPct)} stopName={yourStopName} />
       )}
 
+      {/* Nearest stop markers — one per direction */}
+      {outboundInfo?.pct != null && (
+        <VerticalNearestStopMarker top={racetrackTop(outboundInfo.pct)} side="left" stopName={outboundInfo.stop?.name} />
+      )}
+      {returnInfo?.pct != null && (
+        <VerticalNearestStopMarker top={racetrackTop(returnInfo.pct)} side="right" stopName={returnInfo.stop?.name} />
+      )}
+
+      {/* Nearest stops info — centered in racetrack interior */}
+      {(outboundInfo || returnInfo) && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center text-center"
+          style={{ padding: '70px 28px', pointerEvents: 'none' }}
+        >
+          <div className="mb-4">
+            <div style={{ pointerEvents: 'auto' }} className="flex items-center justify-center mb-2">
+              <RouteCircle routeId={route.id} />
+            </div>
+            <div className="text-gray-700 text-sm font-medium leading-tight">{route.name}</div>
+          </div>
+          <div className="text-sm font-semibold text-blue-800 mb-3">Nearest stops to you</div>
+
+          {returnInfo?.stop && (
+            <div className="mb-4">
+              <div className="text-gray-700 text-sm font-medium leading-tight">To {topTerminalName}</div>
+              <div className="text-gray-400 mt-0.5" style={{ fontSize: '11px' }}>{returnInfo.stop.name}</div>
+              <div className="flex items-center justify-center gap-2 mt-1" style={{ pointerEvents: 'auto' }}>
+                <span className="text-gray-500 text-xs">
+                  {returnInfo.arrivals.length > 0
+                    ? (returnInfo.arrivals[0].minutesAway === 0 ? 'Now' : `${returnInfo.arrivals[0].minutesAway} min`)
+                    : '—'}
+                </span>
+                <a
+                  href={`https://maps.apple.com/?daddr=${returnInfo.stop.lat},${returnInfo.stop.lng}&dirflg=w`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-500 text-xs"
+                >↗</a>
+              </div>
+            </div>
+          )}
+
+          {outboundInfo?.stop && (
+            <div>
+              <div className="text-gray-700 text-sm font-medium leading-tight">To {bottomTerminalName}</div>
+              <div className="text-gray-400 mt-0.5" style={{ fontSize: '11px' }}>{outboundInfo.stop.name}</div>
+              <div className="flex items-center justify-center gap-2 mt-1" style={{ pointerEvents: 'auto' }}>
+                <span className="text-gray-500 text-xs">
+                  {outboundInfo.arrivals.length > 0
+                    ? (outboundInfo.arrivals[0].minutesAway === 0 ? 'Now' : `${outboundInfo.arrivals[0].minutesAway} min`)
+                    : '—'}
+                </span>
+                <a
+                  href={`https://maps.apple.com/?daddr=${outboundInfo.stop.lat},${outboundInfo.stop.lng}&dirflg=w`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-500 text-xs"
+                >↗</a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bus dots */}
       {showBuses && vehicles.map((vehicle, i) => {
@@ -773,8 +871,77 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses, o
   )
 }
 
-function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack, yourStopPct, yourStopName }) {
+function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack, yourStopPct, yourStopName, userLocation }) {
   const routeInfo = routeData[route.id]
+  const [nearestByDir, setNearestByDir] = useState({ outbound: null, return: null })
+  const [arrivalsByDir, setArrivalsByDir] = useState({ outbound: [], return: [] })
+
+  // Find nearest stop per direction whenever user location changes
+  useEffect(() => {
+    if (!userLocation) {
+      setNearestByDir({ outbound: null, return: null })
+      return
+    }
+    const dirs = Object.keys(routeInfo.directions)
+    const findNearest = (stops) => {
+      let best = null, bestDist = Infinity
+      for (const s of stops) {
+        if (s.lat == null || s.lng == null) continue
+        const d = haversineMeters(userLocation.lat, userLocation.lng, s.lat, s.lng)
+        if (d < bestDist) { bestDist = d; best = s }
+      }
+      return best
+    }
+    setNearestByDir({
+      outbound: findNearest(routeInfo.directions[dirs[0]].stops),
+      return: dirs[1] ? findNearest(routeInfo.directions[dirs[1]]?.stops || []) : null,
+    })
+  }, [userLocation, route.id])
+
+  // Fetch stop monitoring arrivals for each direction's nearest stop
+  useEffect(() => {
+    if (!nearestByDir.outbound && !nearestByDir.return) {
+      setArrivalsByDir({ outbound: [], return: [] })
+      return
+    }
+    const fetchForDir = async (stop, key) => {
+      if (!stop) return
+      try {
+        const res = await fetch(STOP_MONITORING_URL(stop.id))
+        const text = await res.text()
+        const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
+        const arrivals = parseArrivals(data).filter(a => a.lineRef === route.id)
+        setArrivalsByDir(prev => ({ ...prev, [key]: arrivals }))
+      } catch (err) {
+        console.error(`Arrivals fetch failed for stop ${stop?.id}:`, err)
+      }
+    }
+    fetchForDir(nearestByDir.outbound, 'outbound')
+    setTimeout(() => fetchForDir(nearestByDir.return, 'return'), 200)
+    const interval = setInterval(() => {
+      fetchForDir(nearestByDir.outbound, 'outbound')
+      setTimeout(() => fetchForDir(nearestByDir.return, 'return'), 200)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [nearestByDir, route.id])
+
+  // Compute pct positions for markers on the racetrack
+  const dirs = Object.keys(routeInfo.directions)
+  const displayData = routeInfo.directions[dirs[0]]
+  let outboundInfo = null
+  if (nearestByDir.outbound) {
+    const pct = displayData.totalDist > 0
+      ? (nearestByDir.outbound.dist / displayData.totalDist) * 100
+      : 0
+    outboundInfo = { stop: nearestByDir.outbound, pct: Math.min(100, Math.max(0, pct)), arrivals: arrivalsByDir.outbound }
+  }
+  let returnInfo = null
+  if (nearestByDir.return && dirs[1] && displayData.points?.length) {
+    const snapDist = snapToShape(nearestByDir.return.lat, nearestByDir.return.lng, displayData.points)
+    const pct = displayData.totalDist > 0 ? (snapDist / displayData.totalDist) * 100 : 0
+    returnInfo = { stop: nearestByDir.return, pct: Math.min(100, Math.max(0, pct)), arrivals: arrivalsByDir.return }
+  }
+
   let alertLabel
   if (alertSeverity === null) alertLabel = 'Checking for alerts…'
   else if (alertSeverity === 'not_running') alertLabel = 'Not running'
@@ -809,6 +976,8 @@ function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack, yo
           showBuses={showBuses}
           yourStopPct={yourStopPct}
           yourStopName={yourStopName}
+          outboundInfo={outboundInfo}
+          returnInfo={returnInfo}
         />
       </div>
     </div>
@@ -1137,6 +1306,7 @@ export default function Home() {
           onBack={() => setSelectedRouteId(null)}
           yourStopPct={yourStopPct}
           yourStopName={yourStopName}
+          userLocation={locationOverride ?? deviceLocation}
         />
       )
     }
