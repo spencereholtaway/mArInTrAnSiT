@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Smile, Info, TriangleAlert, CircleX, Loader, Moon } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Smile, Info, TriangleAlert, CircleX, Loader, Moon, ChevronLeft } from 'lucide-react'
 import routeData from '../data/routeData.json'
 
 const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
@@ -234,7 +234,7 @@ function AlertCircle({ severity }) {
       onMouseLeave={() => setHovered(false)}
     >
       {isAlert ? (
-        <a href="https://marintransit.org/alerts" target="_blank" rel="noopener noreferrer">{circle}</a>
+        <a href="https://marintransit.org/alerts" target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>{circle}</a>
       ) : circle}
       {hovered && (
         <div className="absolute bottom-full right-0 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
@@ -251,12 +251,65 @@ function racetrackLeft(pct) {
   return `calc(12px + ${pct / 100} * (100% - 24px))`
 }
 
+// Map route percentage (0-100) to CSS top for the vertical racetrack.
+function racetrackTop(pct) {
+  return `calc(32px + ${pct / 100} * (100% - 64px))`
+}
+
+// Hook to dynamically adjust tooltip position to stay within viewport
+function useSmartTooltipPosition(tooltipRef, isVisible, orientation = 'vertical') {
+  const [position, setPosition] = useState(null)
+
+  useEffect(() => {
+    if (!isVisible || !tooltipRef.current) {
+      setPosition(null)
+      return
+    }
+
+    const rect = tooltipRef.current.getBoundingClientRect()
+
+    if (orientation === 'vertical') {
+      // For above/below tooltips
+      if (rect.top < 0) {
+        setPosition('bottom')
+      } else if (rect.bottom > window.innerHeight) {
+        setPosition('top')
+      } else {
+        setPosition(null) // Use default
+      }
+    } else if (orientation === 'horizontal') {
+      // For left/right tooltips
+      if (rect.left < 0) {
+        setPosition('right')
+      } else if (rect.right > window.innerWidth) {
+        setPosition('left')
+      } else {
+        setPosition(null) // Use default
+      }
+    }
+  }, [isVisible, tooltipRef, orientation])
+
+  return position
+}
+
 function StopTick({ left, top: topProp, stopName, onTop }) {
   const [showTooltip, setShowTooltip] = useState(false)
+  const tooltipRef = useRef(null)
   // topProp takes precedence; otherwise derive from onTop
   const isTop = onTop === true
   const isBottom = onTop === false
   const resolvedTop = topProp !== undefined ? topProp : (isTop ? '1px' : isBottom ? 'calc(100% - 1px)' : '50%')
+
+  // Determine default position (above for top ticks, below for bottom ticks)
+  const defaultPos = isTop ? 'bottom' : 'top'
+  const adjustedPos = useSmartTooltipPosition(tooltipRef, showTooltip, 'vertical') || defaultPos
+
+  const tooltipStyle = {
+    left: '50%',
+    transform: 'translateX(-50%)',
+    ...(adjustedPos === 'top' ? { top: 'calc(100% + 6px)' } : { bottom: 'calc(100% + 6px)' }),
+  }
+
   return (
     <div
       className="absolute cursor-pointer"
@@ -276,8 +329,9 @@ function StopTick({ left, top: topProp, stopName, onTop }) {
     >
       {showTooltip && (
         <div
-          className="absolute left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
-          style={isTop ? { bottom: 'calc(100% + 6px)' } : { top: 'calc(100% + 6px)' }}
+          ref={tooltipRef}
+          className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
+          style={tooltipStyle}
         >
           {stopName}
         </div>
@@ -305,12 +359,18 @@ function NearbyStopMarker({ left }) {
 
 function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, nextArrivalTime }) {
   const [hovered, setHovered] = useState(false)
+  const tooltipRef = useRef(null)
   let nextMins = null
   if (nextArrivalTime) {
     const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
     nextMins = m <= 0 ? 'Now' : `${m}m`
   }
   const trackTop = movingRight ? '-1px' : 'calc(100% + 1px)'
+
+  // Determine default position (above for top-track buses, below for bottom-track)
+  const defaultPos = movingRight ? 'bottom' : 'top'
+  const adjustedPos = useSmartTooltipPosition(tooltipRef, hovered, 'vertical') || defaultPos
+
   return (
     <div
       className="absolute flex items-center justify-center cursor-pointer"
@@ -320,12 +380,12 @@ function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, next
     >
       {hovered && (
         <div
+          ref={tooltipRef}
           className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
           style={{
             left: '50%',
             transform: 'translateX(-50%)',
-            // Tooltip above for top-track buses, below for bottom-track buses
-            ...(movingRight ? { bottom: 'calc(100% + 4px)' } : { top: 'calc(100% + 4px)' }),
+            ...(adjustedPos === 'top' ? { top: 'calc(100% + 4px)' } : { bottom: 'calc(100% + 4px)' }),
           }}
         >
           <div className="font-bold">{lineRef} → {destination}</div>
@@ -351,11 +411,207 @@ function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, next
   )
 }
 
-function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses }) {
+// --- Vertical racetrack components ---
+
+function VerticalStopTick({ top, side, stopName, leftOverride }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  const tooltipRef = useRef(null)
+
+  const posStyle = side === 'left'
+    ? { top, left: '1px', transform: 'translate(-50%, -50%)' }
+    : side === 'right'
+    ? { top, right: '1px', transform: 'translate(50%, -50%)' }
+    : { top, left: leftOverride ?? '50%', transform: 'translate(-50%, -50%)' } // 'center' for terminus ends
+
+  // Determine default position based on side
+  const defaultPos = side === 'left' ? 'left' : 'right'
+  const adjustedPos = useSmartTooltipPosition(tooltipRef, showTooltip, 'horizontal') || defaultPos
+
+  const tooltipStyle = {
+    top: '50%',
+    transform: 'translateY(-50%)',
+    ...(adjustedPos === 'left' ? { right: 'calc(100% + 8px)' } : { left: 'calc(100% + 8px)' }),
+  }
+
+  return (
+    <div
+      className="absolute cursor-pointer"
+      style={{
+        ...posStyle,
+        width: '9px',
+        height: '9px',
+        backgroundColor: 'white',
+        border: '2px solid #374151',
+        borderRadius: '50%',
+        zIndex: 3,
+      }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {showTooltip && (
+        <div
+          ref={tooltipRef}
+          className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
+          style={tooltipStyle}
+        >
+          {stopName}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop, nextArrivalTime }) {
+  const [hovered, setHovered] = useState(false)
+  const tooltipRef = useRef(null)
+  let nextMins = null
+  if (nextArrivalTime) {
+    const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
+    nextMins = m <= 0 ? 'Now' : `${m}m`
+  }
+  // Outbound (movingDown) → left track; return → right track
+  const trackLeft = movingDown ? '-1px' : 'calc(100% + 1px)'
+
+  // Determine default position (right for outbound/left track, left for return/right track)
+  const defaultPos = movingDown ? 'right' : 'left'
+  const adjustedPos = useSmartTooltipPosition(tooltipRef, hovered, 'horizontal') || defaultPos
+
+  return (
+    <div
+      className="absolute flex items-center justify-center cursor-pointer"
+      style={{ top, left: trackLeft, width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {hovered && (
+        <div
+          ref={tooltipRef}
+          className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
+          style={{
+            top: '50%',
+            transform: 'translateY(-50%)',
+            ...(adjustedPos === 'right' ? { right: 'calc(100% + 4px)' } : { left: 'calc(100% + 4px)' }),
+          }}
+        >
+          <div className="font-bold">{lineRef} → {destination}</div>
+          {nextStop && <div className="text-gray-300">Next: {nextStop}{nextMins ? ` · ${nextMins}` : ''}</div>}
+        </div>
+      )}
+      <div className="absolute w-8 h-8 rounded-full animate-ping bg-lime-400" style={{ animationDelay: `${delay * 1.5}s` }} />
+      {/* Chevron above/below indicating direction */}
+      <div className="absolute" style={{ [movingDown ? 'bottom' : 'top']: '2px' }}>
+        <div className="animate-bounce text-red-500 font-bold text-xl leading-none" style={{ animationDelay: `${delay}s`, opacity: 0.7 }}>
+          {movingDown ? '↓' : '↑'}
+        </div>
+      </div>
+      <div className="animate-bounce absolute" style={{ animationDelay: `${delay}s` }}>
+        <div className="text-2xl">🚌</div>
+      </div>
+    </div>
+  )
+}
+
+function VerticalRacetrack({ route, vehicles, routeInfo, showBuses }) {
+  const isCircular = route.firstStop.trim() === route.lastStop.trim()
+
+  // Deduplicate terminus candidates from both tracks by ID and name,
+  // split into top-cap (pct ≤ 50) and bottom-cap (pct > 50).
+  const seenIds = new Set()
+  const seenNamesTop = new Set()
+  const seenNamesBot = new Set()
+  const topTermini = []
+  const botTermini = []
+  const candidates = [
+    route.topStops[0],
+    route.topStops[route.topStops.length - 1],
+    route.bottomStops[0],
+    route.bottomStops[route.bottomStops.length - 1],
+  ]
+  for (const s of candidates) {
+    if (!s || seenIds.has(s.id)) continue
+    const isBot = s.pct > 50
+    const names = isBot ? seenNamesBot : seenNamesTop
+    if (names.has(s.name)) continue
+    seenIds.add(s.id)
+    names.add(s.name)
+    if (isBot) botTermini.push(s)
+    else topTermini.push(s)
+  }
+
+  const terminusIds = new Set([...topTermini, ...botTermini].map(s => s.id))
+  const leftStops = route.topStops.filter(s => !terminusIds.has(s.id))
+  const rightStops = route.bottomStops.filter(s => !terminusIds.has(s.id))
+
+  // Distribute multiple terminus ticks horizontally across the cap
+  const distribHoriz = (n, i) => `${((i + 1) / (n + 1)) * 100}%`
+
+  return (
+    <div style={{ width: 'min(calc(100vw - 96px), 480px)', height: 'calc(100vh - 140px)', position: 'relative' }}>
+      {/* Pill border */}
+      <div className="absolute inset-0 border-2 border-gray-700 rounded-[32px]" />
+
+      {/* Terminus labels inside the pill ends */}
+      <div className="absolute inset-0 flex flex-col items-center justify-between pointer-events-none" style={{ paddingTop: '10px', paddingBottom: '10px' }}>
+        <span className="text-gray-500 text-center leading-tight font-medium" style={{ fontSize: '11px', maxWidth: '70%', wordBreak: 'break-word' }}>
+          {topTermini[0]?.name}
+        </span>
+        {!isCircular && (
+          <span className="text-gray-500 text-center leading-tight font-medium" style={{ fontSize: '11px', maxWidth: '70%', wordBreak: 'break-word' }}>
+            {botTermini[0]?.name}
+          </span>
+        )}
+      </div>
+
+      {/* Terminus ticks — centered horizontally in top/bottom caps */}
+      {topTermini.map((s, i) => (
+        <VerticalStopTick key={`tt-${s.id}`} top="1px" side="center" leftOverride={distribHoriz(topTermini.length, i)} stopName={s.name} />
+      ))}
+      {!isCircular && botTermini.map((s, i) => (
+        <VerticalStopTick key={`bt-${s.id}`} top="calc(100% - 1px)" side="center" leftOverride={distribHoriz(botTermini.length, i)} stopName={s.name} />
+      ))}
+
+      {/* Left side stops (display/outbound direction) */}
+      {leftStops.map(stop => (
+        <VerticalStopTick key={`left-${stop.id}`} top={racetrackTop(stop.pct)} side="left" stopName={stop.name} />
+      ))}
+
+      {/* Right side stops (return direction) */}
+      {rightStops.map(stop => (
+        <VerticalStopTick key={`right-${stop.id}`} top={racetrackTop(stop.pct)} side="right" stopName={stop.name} />
+      ))}
+
+      {/* Bus dots */}
+      {showBuses && vehicles.map((vehicle, i) => {
+        const pos = getBusPosition(vehicle, routeInfo)
+        if (!pos) return null
+        const journey = vehicle.MonitoredVehicleJourney
+        const ref = journey?.VehicleRef || String(i)
+        const delay = (ref.charCodeAt(ref.length - 1) % 8) * 0.1
+        const destination = journey?.DestinationName?.value || journey?.DestinationName || ''
+        const nextStop = journey?.MonitoredCall?.StopPointName || ''
+        const nextArrivalTime = journey?.MonitoredCall?.ExpectedArrivalTime || journey?.MonitoredCall?.AimedArrivalTime || ''
+        return (
+          <VerticalBusDot
+            key={ref}
+            top={racetrackTop(pos.pct)}
+            movingDown={pos.movingRight}
+            delay={delay}
+            lineRef={route.id}
+            destination={destination}
+            nextStop={nextStop}
+            nextArrivalTime={nextArrivalTime}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses, onClick }) {
   const routeInfo = routeData[route.id]
   return (
     // Align circles (36px) to vertical center of the 56px pill → mt-[10px]
-    <div className="flex gap-3">
+    <div className={`flex gap-3${onClick ? ' cursor-pointer' : ''}`} onClick={onClick}>
       <div className="mt-[10px] shrink-0"><RouteCircle routeId={route.id} /></div>
 
       <div className="flex-1 min-w-0">
@@ -387,9 +643,11 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses })
 
             // Collect unique terminus candidates from both tracks.
             // Use pct to determine which end: ≤50 → left, >50 → right.
+            // Deduplicate by both ID and name (in case different stops have the same location).
             const leftTermini = []
             const rightTermini = []
             const seenIds = new Set()
+            const seenNames = { left: new Set(), right: new Set() }
 
             const terminusCandidates = [
               route.topStops[0],
@@ -400,9 +658,12 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses })
 
             for (const stop of terminusCandidates) {
               if (!stop || seenIds.has(stop.id)) continue
+              const end = stop.pct <= 50 ? 'left' : 'right'
+              if (seenNames[end].has(stop.name)) continue // Skip if we already have this name at this end
               seenIds.add(stop.id)
+              seenNames[end].add(stop.name)
               const entry = { id: stop.id, name: stop.name, pct: stop.pct, fromTop: topStopIds.has(stop.id) }
-              if (stop.pct <= 50) leftTermini.push(entry)
+              if (end === 'left') leftTermini.push(entry)
               else rightTermini.push(entry)
             }
 
@@ -422,10 +683,10 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses })
             const elements = []
 
             leftTermini.forEach((stop, i) => elements.push(
-              <StopTick key={`tl-${stop.id}`} left="0%" top={leftTops[i]} stopName={stop.name} />
+              <StopTick key={`tl-${stop.id}`} left="1px" top={leftTops[i]} stopName={stop.name} />
             ))
             rightTermini.forEach((stop, i) => elements.push(
-              <StopTick key={`tr-${stop.id}`} left="100%" top={rightTops[i]} stopName={stop.name} />
+              <StopTick key={`tr-${stop.id}`} left="calc(100% - 1px)" top={rightTops[i]} stopName={stop.name} />
             ))
 
             topStops.forEach(stop => {
@@ -463,6 +724,46 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity, showBuses })
       </div>
 
       <div className="mt-[10px] shrink-0"><AlertCircle severity={alertSeverity} /></div>
+    </div>
+  )
+}
+
+function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack }) {
+  const routeInfo = routeData[route.id]
+  let alertLabel
+  if (alertSeverity === null) alertLabel = 'Checking for alerts…'
+  else if (alertSeverity === 'not_running') alertLabel = 'Not running'
+  else if (alertSeverity === 'severe') alertLabel = 'Severe disruption'
+  else if (alertSeverity === 'slight') alertLabel = 'Service alert'
+  else if (alertSeverity && alertSeverity !== 'ok') alertLabel = 'Service advisory'
+  else alertLabel = 'No alerts'
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-gradient-to-r from-green-700 to-lime-400 rounded-b-lg shadow-lg">
+        <div className="px-4 py-2 flex items-center gap-3">
+          <button onClick={onBack} className="text-white p-1 -ml-1 rounded hover:bg-white/20">
+            <ChevronLeft size={24} />
+          </button>
+          <RouteCircle routeId={route.id} />
+          <div className="flex-1 min-w-0">
+            <div className="text-white font-bold text-base leading-tight truncate">{route.name}</div>
+            <div className="text-green-100 text-xs">{alertLabel}</div>
+          </div>
+          <AlertCircle severity={alertSeverity} />
+        </div>
+      </div>
+
+      {/* Vertical racetrack — centered in remaining viewport */}
+      <div className="flex-1 flex items-center justify-center py-6">
+        <VerticalRacetrack
+          route={route}
+          vehicles={vehicles}
+          routeInfo={routeInfo}
+          showBuses={showBuses}
+        />
+      </div>
     </div>
   )
 }
@@ -614,6 +915,7 @@ export default function Home() {
   const [selectedStop, setSelectedStop] = useState(null)
   const [arrivalsByStop, setArrivalsByStop] = useState({})
   const [showBuses, setShowBuses] = useState(true)
+  const [selectedRouteId, setSelectedRouteId] = useState(null)
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -772,6 +1074,22 @@ export default function Home() {
     setSelectedStop(stopData)
   }
 
+  // Route detail view
+  if (selectedRouteId) {
+    const selectedRoute = routes.find(r => r.id === selectedRouteId)
+    if (selectedRoute) {
+      return (
+        <RouteDetailView
+          route={selectedRoute}
+          vehicles={vehiclesByLine[selectedRouteId] || []}
+          alertSeverity={getAlertStatus(selectedRouteId, alertOverrides, alertsByLine, vehiclesByLine)}
+          showBuses={showBuses}
+          onBack={() => setSelectedRouteId(null)}
+        />
+      )
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-clip">
       {/* Header - full width with rounded bottom */}
@@ -890,10 +1208,22 @@ export default function Home() {
               <>
                 {/* Running routes */}
                 {runningRoutes.length > 0 && (
-                  <div className="p-6 space-y-12">
-                    {runningRoutes.map((route) => (
-                      <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)} showBuses={showBuses} />
-                    ))}
+                  <div>
+                    {notRunningRoutes.length > 0 && (
+                      <div className="text-sm font-semibold text-blue-800 mb-2 px-6 md:px-0">Routes still running</div>
+                    )}
+                    <div className="p-6 space-y-12">
+                      {runningRoutes.map((route) => (
+                        <RouteLine
+                          key={route.id}
+                          route={route}
+                          vehicles={vehiclesByLine[route.id] || []}
+                          alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)}
+                          showBuses={showBuses}
+                          onClick={() => setSelectedRouteId(route.id)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -903,7 +1233,14 @@ export default function Home() {
                     <div className="text-sm font-semibold text-blue-800 mb-2 px-6 md:px-0">Routes not currently running</div>
                     <div className="p-6 space-y-12">
                       {notRunningRoutes.map((route) => (
-                        <RouteLine key={route.id} route={route} vehicles={vehiclesByLine[route.id] || []} alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)} showBuses={showBuses} />
+                        <RouteLine
+                          key={route.id}
+                          route={route}
+                          vehicles={vehiclesByLine[route.id] || []}
+                          alertSeverity={getAlertStatus(route.id, alertOverrides, alertsByLine, vehiclesByLine)}
+                          showBuses={showBuses}
+                          onClick={() => setSelectedRouteId(route.id)}
+                        />
                       ))}
                     </div>
                   </div>
