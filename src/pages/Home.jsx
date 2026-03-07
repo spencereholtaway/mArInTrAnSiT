@@ -15,6 +15,13 @@ const STOP_MONITORING_URL = (stopCode) => import.meta.env.DEV
 
 const NEARBY_THRESHOLD_METERS = 15
 
+// Polling intervals
+const VEHICLE_POLL_MS = 30000      // 30s — bus positions
+const ARRIVAL_POLL_MS = 10000      // 10s — active stop + nearest 2 nearby
+const NEARBY_SLOW_POLL_MS = 45000  // 45s — remaining nearby stops
+const ROUTE_DETAIL_POLL_MS = 10000 // 10s — route view direction stops
+const ALERTS_POLL_MS = 300000      // 5 min — service alerts
+
 // Snap a GPS point to the nearest segment on a shape polyline.
 // Each point is [lat, lng, distAlongShape].
 // Returns the interpolated distance along the shape at the closest point.
@@ -80,13 +87,12 @@ function getBusPosition(vehicle, routeInfo) {
   return { pct: Math.min(100, Math.max(0, pct)), movingRight }
 }
 
-// Calculate countdown to next update (polling every 30 seconds)
-function getNextUpdateCountdown(date) {
+// Calculate countdown to next update
+function getNextUpdateCountdown(date, pollInterval = VEHICLE_POLL_MS) {
   if (!date) return 'Loading...'
-  const POLL_INTERVAL = 30000 // 30 seconds
   const now = new Date()
   const elapsed = now - date
-  const remaining = Math.max(0, POLL_INTERVAL - elapsed)
+  const remaining = Math.max(0, pollInterval - elapsed)
   const seconds = Math.ceil(remaining / 1000)
   return `Updating in ${seconds}s`
 }
@@ -921,7 +927,7 @@ function RouteDetailView({ route, vehicles, alertSeverity, showBuses, onBack, yo
     const interval = setInterval(() => {
       fetchForDir(nearestByDir.outbound, 'outbound')
       setTimeout(() => fetchForDir(nearestByDir.return, 'return'), 200)
-    }, 30000)
+    }, ROUTE_DETAIL_POLL_MS)
     return () => clearInterval(interval)
   }, [nearestByDir, route.id])
 
@@ -1132,6 +1138,8 @@ export default function Home() {
   const [arrivalsByStop, setArrivalsByStop] = useState({})
   const [showBuses, setShowBuses] = useState(true)
   const [selectedRouteId, setSelectedRouteId] = useState(null)
+  const [lastArrivalFetch, setLastArrivalFetch] = useState(null)
+  const retryPendingRef = useRef({})
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -1155,7 +1163,7 @@ export default function Home() {
     }
 
     fetchVehicles()
-    const interval = setInterval(fetchVehicles, 30000)
+    const interval = setInterval(fetchVehicles, VEHICLE_POLL_MS)
     return () => clearInterval(interval)
   }, [])
 
@@ -1189,47 +1197,105 @@ export default function Home() {
       }
     }
     fetchAlerts()
-    const interval = setInterval(fetchAlerts, 5 * 60 * 1000)
+    const interval = setInterval(fetchAlerts, ALERTS_POLL_MS)
     return () => clearInterval(interval)
   }, [])
 
   // Update countdown display every second
+  // Use faster arrival cycle when arrivals are being fetched, otherwise vehicle cycle
   useEffect(() => {
+    const hasArrivals = !!(nearestStop || selectedStop) || !!selectedRouteId
+    const countdownDate = hasArrivals ? (lastArrivalFetch || lastUpdated) : lastUpdated
+    const pollMs = hasArrivals ? ARRIVAL_POLL_MS : VEHICLE_POLL_MS
     const timer = setInterval(() => {
-      setRelativeTime(getNextUpdateCountdown(lastUpdated))
+      setRelativeTime(getNextUpdateCountdown(countdownDate, pollMs))
     }, 1000)
     return () => clearInterval(timer)
-  }, [lastUpdated])
+  }, [lastUpdated, lastArrivalFetch, nearestStop, selectedStop, selectedRouteId])
 
-  // Fetch arrivals for a set of stopIds sequentially to avoid rate limiting
-  async function fetchArrivalsForStops(stopIds) {
-    for (const stopId of stopIds) {
-      try {
-        const res = await fetch(STOP_MONITORING_URL(stopId))
-        const text = await res.text()
-        const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
-        const arrivals = parseArrivals(data)
+  // Fetch arrivals for a single stop with retry-on-empty logic
+  async function fetchArrivalForStop(stopId) {
+    try {
+      const res = await fetch(STOP_MONITORING_URL(stopId))
+      const text = await res.text()
+      const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
+      const arrivals = parseArrivals(data)
+      setLastArrivalFetch(new Date())
+
+      if (arrivals.length === 0 && !retryPendingRef.current[stopId]) {
+        // Empty result — check if we previously had arrivals (transient failure)
+        setArrivalsByStop(prev => {
+          if (prev[stopId]?.length > 0) {
+            // Had arrivals before, schedule single retry
+            retryPendingRef.current[stopId] = true
+            setTimeout(async () => {
+              try {
+                const retryRes = await fetch(STOP_MONITORING_URL(stopId))
+                const retryText = await retryRes.text()
+                const retryData = JSON.parse(retryText.charCodeAt(0) === 0xFEFF ? retryText.slice(1) : retryText)
+                const retryArrivals = parseArrivals(retryData)
+                setArrivalsByStop(p => ({ ...p, [stopId]: retryArrivals }))
+              } catch (e) {
+                console.error(`Retry failed for stop ${stopId}:`, e)
+                setArrivalsByStop(p => ({ ...p, [stopId]: [] }))
+              }
+              retryPendingRef.current[stopId] = false
+            }, 5000)
+            return prev // Keep old data while retrying
+          }
+          return { ...prev, [stopId]: arrivals }
+        })
+      } else {
+        retryPendingRef.current[stopId] = false
         setArrivalsByStop(prev => ({ ...prev, [stopId]: arrivals }))
-      } catch (err) {
-        console.error(`Failed to fetch arrivals for stop ${stopId}:`, err)
-        setArrivalsByStop(prev => ({ ...prev, [stopId]: [] }))
       }
-      // Small delay between requests to avoid rate limiting
-      await new Promise(r => setTimeout(r, 150))
+    } catch (err) {
+      console.error(`Failed to fetch arrivals for stop ${stopId}:`, err)
+      setArrivalsByStop(prev => ({ ...prev, [stopId]: [] }))
     }
   }
 
-  // Fetch arrivals when nearby stops or active stop changes; refresh every 30s
+  // Fetch arrivals for multiple stops sequentially
+  async function fetchArrivalsForStops(stopIds) {
+    for (const stopId of stopIds) {
+      await fetchArrivalForStop(stopId)
+      if (stopIds.length > 1) await new Promise(r => setTimeout(r, 150))
+    }
+  }
+
+  // Active stop arrivals (10s) — only on home screen
   useEffect(() => {
+    if (selectedRouteId) return // Skip when in route detail view
     const activeStop = nearestStop ?? selectedStop
-    const stopIds = activeStop
-      ? [activeStop.stopId]
-      : nearbyStops.map(s => s.stopId)
-    if (stopIds.length === 0) return
-    fetchArrivalsForStops(stopIds)
-    const interval = setInterval(() => fetchArrivalsForStops(stopIds), 30000)
+    if (!activeStop) return
+    fetchArrivalForStop(activeStop.stopId)
+    const interval = setInterval(() => fetchArrivalForStop(activeStop.stopId), ARRIVAL_POLL_MS)
     return () => clearInterval(interval)
-  }, [nearbyStops, nearestStop, selectedStop])
+  }, [nearestStop, selectedStop, selectedRouteId])
+
+  // Nearest 2 nearby stops (10s) — only on home screen, only when no active stop
+  useEffect(() => {
+    if (selectedRouteId) return
+    if (nearestStop || selectedStop) return // Active stop takes over
+    const fastStops = nearbyStops.slice(0, 2)
+    if (fastStops.length === 0) return
+    const stopIds = fastStops.map(s => s.stopId)
+    fetchArrivalsForStops(stopIds)
+    const interval = setInterval(() => fetchArrivalsForStops(stopIds), ARRIVAL_POLL_MS)
+    return () => clearInterval(interval)
+  }, [nearbyStops, nearestStop, selectedStop, selectedRouteId])
+
+  // Remaining nearby stops (45s) — only on home screen, only when no active stop
+  useEffect(() => {
+    if (selectedRouteId) return
+    if (nearestStop || selectedStop) return
+    const slowStops = nearbyStops.slice(2)
+    if (slowStops.length === 0) return
+    const stopIds = slowStops.map(s => s.stopId)
+    fetchArrivalsForStops(stopIds)
+    const interval = setInterval(() => fetchArrivalsForStops(stopIds), NEARBY_SLOW_POLL_MS)
+    return () => clearInterval(interval)
+  }, [nearbyStops, nearestStop, selectedStop, selectedRouteId])
 
   // Watch device location
   useEffect(() => {
