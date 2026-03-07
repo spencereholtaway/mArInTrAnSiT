@@ -6,8 +6,12 @@ const API_KEY = import.meta.env.VITE_MARIN_TRANSIT_API_KEY
 const VEHICLE_URL = import.meta.env.DEV
   ? `/api/VehicleMonitoring?api_key=${API_KEY}&agency=MA&Format=json`
   : `/api/vehicle-monitoring`
-const ALERTS_URL = `/api/service-alerts`
-const STOP_MONITORING_URL = (stopCode) => `/api/stop-monitoring?stopCode=${stopCode}`
+const ALERTS_URL = import.meta.env.DEV
+  ? `/api/SituationExchange?api_key=${API_KEY}&agency=MA&Format=json`
+  : `/api/service-alerts`
+const STOP_MONITORING_URL = (stopCode) => import.meta.env.DEV
+  ? `/api/StopMonitoring?api_key=${API_KEY}&agency=MA&stopCode=${stopCode}&Format=json`
+  : `/api/stop-monitoring?stopCode=${stopCode}`
 
 const NEARBY_THRESHOLD_METERS = 15
 
@@ -62,20 +66,15 @@ function getBusPosition(vehicle, routeInfo) {
   const dirs = Object.keys(routeInfo.directions)
   const displayDir = dirs[0]
 
-  // Use the bus's direction shape if available, else display direction
-  const busDir = dirRef && routeInfo.directions[dirRef] ? dirRef : displayDir
-  const shape = routeInfo.directions[busDir]
+  // Always snap to display direction shape so bus aligns with displayed stops
+  const shape = routeInfo.directions[displayDir]
   if (!shape || !shape.points.length) return null
 
   const snapDist = snapToShape(busLat, busLng, shape.points)
-  let pct = (snapDist / shape.totalDist) * 100
-
-  // If bus is going in the opposite direction from display, invert
-  if (busDir !== displayDir) {
-    pct = 100 - pct
-  }
+  const pct = (snapDist / shape.totalDist) * 100
 
   // movingRight = traveling left-to-right on the display line
+  const busDir = dirRef && routeInfo.directions[dirRef] ? dirRef : displayDir
   const movingRight = busDir === displayDir
 
   return { pct: Math.min(100, Math.max(0, pct)), movingRight }
@@ -105,9 +104,10 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 
 // Parse StopMonitoring API response into arrival objects
 function parseArrivals(data) {
-  const visits = data?.Siri?.ServiceDelivery?.StopMonitoringDelivery?.MonitoredStopVisit || []
+  const delivery = data?.Siri?.ServiceDelivery ?? data?.ServiceDelivery
+  const visits = delivery?.StopMonitoringDelivery?.MonitoredStopVisit || []
   const arr = Array.isArray(visits) ? visits : [visits]
-  return arr.map(v => {
+  const parsed = arr.map(v => {
     const journey = v.MonitoredVehicleJourney
     if (!journey) return null
     const call = journey.MonitoredCall
@@ -120,6 +120,15 @@ function parseArrivals(data) {
     const minutesAway = Math.round((new Date(expectedTime) - new Date()) / 60000)
     return { lineRef, destination, minutesAway }
   }).filter(Boolean).filter(a => a.minutesAway >= 0).sort((a, b) => a.minutesAway - b.minutesAway)
+
+  // Keep only the next arrival per line+destination
+  const seen = new Set()
+  return parsed.filter(a => {
+    const key = `${a.lineRef}|${a.destination}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 // Build routes array from GTFS data
@@ -231,12 +240,27 @@ function NearbyStopMarker({ pct }) {
   )
 }
 
-function BusDot({ position, delay, movingRight }) {
+function BusDot({ position, delay, movingRight, lineRef, destination, nextStop, nextArrivalTime }) {
+  const [hovered, setHovered] = useState(false)
+  let nextMins = null
+  if (nextArrivalTime) {
+    const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
+    nextMins = m <= 0 ? 'Now' : `${m}m`
+  }
   return (
     <div
-      className="absolute flex items-center justify-center"
-      style={{ left: `${position}%`, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 10 }}
+      className="absolute flex items-center justify-center cursor-pointer"
+      style={{ left: `${position}%`, top: '50%', width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {hovered && (
+        <div className="absolute bottom-full mb-7 bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
+          style={{ left: '50%', transform: 'translateX(-50%)' }}>
+          <div className="font-bold">{lineRef} → {destination}</div>
+          {nextStop && <div className="text-gray-300">Next: {nextStop}{nextMins ? ` · ${nextMins}` : ''}</div>}
+        </div>
+      )}
       {/* Pulse ring tied to bounce at 1.5x stagger */}
       <div
         className="absolute w-8 h-8 rounded-full animate-ping bg-lime-400"
@@ -279,10 +303,14 @@ function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
         {vehicles.map((vehicle, i) => {
           const pos = getBusPosition(vehicle, routeInfo)
           if (pos === null) return null
-          // Create staggered bounce delay from vehicle ref
-          const ref = vehicle.MonitoredVehicleJourney?.VehicleRef || String(i)
+          const journey = vehicle.MonitoredVehicleJourney
+          const ref = journey?.VehicleRef || String(i)
           const delay = (ref.charCodeAt(ref.length - 1) % 8) * 0.1
-          return <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight} />
+          const destination = journey?.DestinationName?.value || journey?.DestinationName || ''
+          const nextStop = journey?.MonitoredCall?.StopPointName || ''
+          const nextArrivalTime = journey?.MonitoredCall?.ExpectedArrivalTime || journey?.MonitoredCall?.AimedArrivalTime || ''
+          return <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight}
+            lineRef={route.id} destination={destination} nextStop={nextStop} nextArrivalTime={nextArrivalTime} />
         })}
       </div>
       <AlertCircle severity={alertSeverity} />
@@ -493,25 +521,21 @@ export default function Home() {
     return () => clearInterval(timer)
   }, [lastUpdated])
 
-  // Fetch arrivals for a set of stopIds and merge into arrivalsByStop
+  // Fetch arrivals for a set of stopIds sequentially to avoid rate limiting
   async function fetchArrivalsForStops(stopIds) {
-    const results = await Promise.all(
-      stopIds.map(async stopId => {
-        try {
-          const res = await fetch(STOP_MONITORING_URL(stopId))
-          const text = await res.text()
-          const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
-          return { stopId, arrivals: parseArrivals(data) }
-        } catch {
-          return { stopId, arrivals: [] }
-        }
-      })
-    )
-    setArrivalsByStop(prev => {
-      const next = { ...prev }
-      for (const { stopId, arrivals } of results) next[stopId] = arrivals
-      return next
-    })
+    for (const stopId of stopIds) {
+      try {
+        const res = await fetch(STOP_MONITORING_URL(stopId))
+        const text = await res.text()
+        const data = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text)
+        const arrivals = parseArrivals(data)
+        setArrivalsByStop(prev => ({ ...prev, [stopId]: arrivals }))
+      } catch (err) {
+        console.error(`Failed to fetch arrivals for stop ${stopId}:`, err)
+      }
+      // Small delay between requests to avoid rate limiting
+      await new Promise(r => setTimeout(r, 150))
+    }
   }
 
   // Fetch arrivals when nearby stops or active stop changes; refresh every 30s
