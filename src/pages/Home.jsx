@@ -135,12 +135,40 @@ function parseArrivals(data) {
 const routes = Object.entries(routeData).map(([id, data]) => {
   const dirs = Object.keys(data.directions)
   const displayDir = dirs[0]
-  const dirData = data.directions[displayDir]
+  const returnDir = dirs[1] || null
+  const displayData = data.directions[displayDir]
+
+  // Top edge: display direction stops with 0-100% pct
+  const topStops = displayData.stops.map(s => ({
+    id: s.id,
+    name: s.name,
+    pct: displayData.totalDist > 0 ? (s.dist / displayData.totalDist) * 100 : 0,
+  }))
+
+  // Bottom edge: return direction stops snapped to display shape
+  let bottomStops = []
+  if (returnDir && displayData.points?.length) {
+    const returnData = data.directions[returnDir]
+    bottomStops = (returnData?.stops || []).map(s => {
+      if (s.lat == null || s.lng == null) return null
+      const snapDist = snapToShape(s.lat, s.lng, displayData.points)
+      return {
+        id: s.id,
+        name: s.name,
+        pct: Math.min(100, Math.max(0, displayData.totalDist > 0 ? (snapDist / displayData.totalDist) * 100 : 0)),
+      }
+    }).filter(Boolean)
+  }
+
   return {
     id,
     name: data.name,
-    stops: dirData.stops,
-    totalDist: dirData.totalDist,
+    stops: displayData.stops,         // kept for buildStopData pct lookup
+    totalDist: displayData.totalDist, // kept for buildStopData
+    topStops,
+    bottomStops,
+    firstStop: displayData.stops[0]?.name || '',
+    lastStop: displayData.stops[displayData.stops.length - 1]?.name || '',
   }
 })
 
@@ -201,21 +229,29 @@ function AlertCircle({ severity }) {
   )
 }
 
-function StopTick({ pct, stopName }) {
+function StopTick({ pct, stopName, onTop }) {
   const [showTooltip, setShowTooltip] = useState(false)
   return (
     <div
-      className="absolute w-px h-4 bg-black group cursor-pointer"
+      className="absolute cursor-pointer"
       style={{
         left: `${pct}%`,
-        top: '50%',
-        transform: 'translate(-50%, -50%)',
+        top: onTop ? '35%' : '65%',
+        width: '1px',
+        height: '10px',
+        backgroundColor: '#374151',
+        // Top ticks hang downward from the track; bottom ticks hang upward
+        transform: onTop ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+        zIndex: 2,
       }}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
       {showTooltip && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
+        <div
+          className="absolute left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
+          style={onTop ? { bottom: 'calc(100% + 6px)' } : { top: 'calc(100% + 6px)' }}
+        >
           {stopName}
         </div>
       )}
@@ -229,7 +265,7 @@ function NearbyStopMarker({ pct }) {
       className="absolute flex items-center justify-center"
       style={{
         left: `${pct}%`,
-        top: 'calc(50% - 8px)',
+        top: '35%',
         transform: 'translate(-50%, -50%)',
         zIndex: 5,
       }}
@@ -247,16 +283,25 @@ function BusDot({ position, delay, movingRight, lineRef, destination, nextStop, 
     const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
     nextMins = m <= 0 ? 'Now' : `${m}m`
   }
+  // Top track (35%) for display-direction buses, bottom track (65%) for return-direction buses
+  const trackTop = movingRight ? '35%' : '65%'
   return (
     <div
       className="absolute flex items-center justify-center cursor-pointer"
-      style={{ left: `${position}%`, top: '50%', width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
+      style={{ left: `${position}%`, top: trackTop, width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {hovered && (
-        <div className="absolute bottom-full mb-7 bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
-          style={{ left: '50%', transform: 'translateX(-50%)' }}>
+        <div
+          className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
+          style={{
+            left: '50%',
+            transform: 'translateX(-50%)',
+            // Tooltip above for top-track buses, below for bottom-track buses
+            ...(movingRight ? { bottom: 'calc(100% + 4px)' } : { top: 'calc(100% + 4px)' }),
+          }}
+        >
           <div className="font-bold">{lineRef} → {destination}</div>
           {nextStop && <div className="text-gray-300">Next: {nextStop}{nextMins ? ` · ${nextMins}` : ''}</div>}
         </div>
@@ -282,38 +327,61 @@ function BusDot({ position, delay, movingRight, lineRef, destination, nextStop, 
 
 function RouteLine({ route, vehicles, nearbyStopPct, alertSeverity }) {
   const routeInfo = routeData[route.id]
-  const firstStop = route.stops[0]?.name || 'Start'
-  const lastStop = route.stops[route.stops.length - 1]?.name || 'End'
   return (
-    <div className="flex items-center gap-3">
-      <RouteCircle routeId={route.id} />
-      <div className="flex-1 relative h-10">
-        <div className="absolute left-0 right-0 h-px bg-black" style={{ top: 'calc(50% + 8px)' }} />
-        <div className="absolute left-0 text-gray-400 whitespace-nowrap" style={{ top: 'calc(50% + 12px)', fontSize: '10px' }}>{firstStop}</div>
-        <div className="absolute right-0 text-gray-400 whitespace-nowrap text-right" style={{ top: 'calc(50% + 12px)', fontSize: '10px' }}>{lastStop}</div>
-        {route.stops.map((stop, i) => {
-          const pct = route.totalDist > 0
-            ? (stop.dist / route.totalDist) * 100
-            : (i / (route.stops.length - 1)) * 100
-          return <StopTick key={`${route.id}-${i}`} pct={pct} stopName={stop.name} />
-        })}
-        {nearbyStopPct !== undefined && (
-          <NearbyStopMarker pct={nearbyStopPct} />
-        )}
-        {vehicles.map((vehicle, i) => {
-          const pos = getBusPosition(vehicle, routeInfo)
-          if (pos === null) return null
-          const journey = vehicle.MonitoredVehicleJourney
-          const ref = journey?.VehicleRef || String(i)
-          const delay = (ref.charCodeAt(ref.length - 1) % 8) * 0.1
-          const destination = journey?.DestinationName?.value || journey?.DestinationName || ''
-          const nextStop = journey?.MonitoredCall?.StopPointName || ''
-          const nextArrivalTime = journey?.MonitoredCall?.ExpectedArrivalTime || journey?.MonitoredCall?.AimedArrivalTime || ''
-          return <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight}
-            lineRef={route.id} destination={destination} nextStop={nextStop} nextArrivalTime={nextArrivalTime} />
-        })}
+    // Align circles (36px) to vertical center of the 56px pill → mt-[10px]
+    <div className="flex gap-3">
+      <div className="mt-[10px] shrink-0"><RouteCircle routeId={route.id} /></div>
+
+      <div className="flex-1 min-w-0">
+        {/* Racetrack: rounded rectangle with two tracks inside */}
+        <div className="relative" style={{ height: '56px' }}>
+          {/* Pill border */}
+          <div className="absolute inset-0 border-2 border-gray-700 rounded-xl" />
+
+          {/* Top track line — display direction (left → right) */}
+          <div className="absolute bg-gray-300" style={{ left: '3%', right: '3%', height: '1px', top: '35%' }} />
+
+          {/* Bottom track line — return direction (right → left) */}
+          <div className="absolute bg-gray-300" style={{ left: '3%', right: '3%', height: '1px', top: '65%' }} />
+
+          {/* Display direction stop ticks (top) */}
+          {route.topStops.map(stop => (
+            <StopTick key={`top-${stop.id}`} pct={stop.pct} stopName={stop.name} onTop={true} />
+          ))}
+
+          {/* Return direction stop ticks (bottom) */}
+          {route.bottomStops.map(stop => (
+            <StopTick key={`bot-${stop.id}`} pct={stop.pct} stopName={stop.name} onTop={false} />
+          ))}
+
+          {/* Nearby stop location marker (on top/display track) */}
+          {nearbyStopPct !== undefined && <NearbyStopMarker pct={nearbyStopPct} />}
+
+          {/* Vehicle dots — split to top or bottom track by movingRight */}
+          {vehicles.map((vehicle, i) => {
+            const pos = getBusPosition(vehicle, routeInfo)
+            if (pos === null) return null
+            const journey = vehicle.MonitoredVehicleJourney
+            const ref = journey?.VehicleRef || String(i)
+            const delay = (ref.charCodeAt(ref.length - 1) % 8) * 0.1
+            const destination = journey?.DestinationName?.value || journey?.DestinationName || ''
+            const nextStop = journey?.MonitoredCall?.StopPointName || ''
+            const nextArrivalTime = journey?.MonitoredCall?.ExpectedArrivalTime || journey?.MonitoredCall?.AimedArrivalTime || ''
+            return (
+              <BusDot key={ref} position={pos.pct} delay={delay} movingRight={pos.movingRight}
+                lineRef={route.id} destination={destination} nextStop={nextStop} nextArrivalTime={nextArrivalTime} />
+            )
+          })}
+        </div>
+
+        {/* Terminal labels below the pill */}
+        <div className="flex justify-between mt-1">
+          <div className="text-gray-400 truncate leading-tight" style={{ fontSize: '9px', maxWidth: '45%' }}>{route.firstStop}</div>
+          <div className="text-gray-400 text-right truncate leading-tight" style={{ fontSize: '9px', maxWidth: '45%' }}>{route.lastStop}</div>
+        </div>
       </div>
-      <AlertCircle severity={alertSeverity} />
+
+      <div className="mt-[10px] shrink-0"><AlertCircle severity={alertSeverity} /></div>
     </div>
   )
 }
@@ -532,6 +600,7 @@ export default function Home() {
         setArrivalsByStop(prev => ({ ...prev, [stopId]: arrivals }))
       } catch (err) {
         console.error(`Failed to fetch arrivals for stop ${stopId}:`, err)
+        setArrivalsByStop(prev => ({ ...prev, [stopId]: [] }))
       }
       // Small delay between requests to avoid rate limiting
       await new Promise(r => setTimeout(r, 150))
@@ -642,7 +711,9 @@ export default function Home() {
                       >
                         <div className="text-sm font-semibold text-blue-800 whitespace-nowrap">{stop.stopName}</div>
                         <div className="text-xs text-gray-400 mt-0.5 mb-2">{Math.round(stop.distanceMeters)}m away</div>
-                        {arrivals.length > 0 ? (
+                        {arrivalsByStop[stop.stopId] === undefined ? (
+                          <div className="text-xs text-gray-300 italic">Loading…</div>
+                        ) : arrivals.length > 0 ? (
                           <div className="space-y-1">
                             {arrivals.map((a, i) => (
                               <div key={i} className="text-xs text-gray-600 whitespace-nowrap">
@@ -651,7 +722,7 @@ export default function Home() {
                             ))}
                           </div>
                         ) : (
-                          <div className="text-xs text-gray-300 italic">Loading…</div>
+                          <div className="text-xs text-gray-300 italic">No upcoming arrivals</div>
                         )}
                       </button>
                     )
@@ -673,7 +744,9 @@ export default function Home() {
                   </div>
                   {(() => {
                     const arrivals = (arrivalsByStop[activeStop.stopId] || []).slice(0, 5)
-                    return arrivals.length > 0 ? (
+                    return arrivalsByStop[activeStop.stopId] === undefined ? (
+                      <div className="text-xs text-gray-300 italic">Loading arrivals…</div>
+                    ) : arrivals.length > 0 ? (
                       <div className="space-y-1.5">
                         {arrivals.map((a, i) => (
                           <div key={i} className="text-xs text-gray-600">
@@ -682,7 +755,7 @@ export default function Home() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-300 italic">Loading arrivals…</div>
+                      <div className="text-xs text-gray-300 italic">No upcoming arrivals</div>
                     )
                   })()}
                 </div>
