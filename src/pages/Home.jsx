@@ -257,77 +257,74 @@ function racetrackTop(pct) {
 }
 
 // Hook to dynamically adjust tooltip position to stay within viewport
-function useSmartTooltipPosition(tooltipRef, isVisible, orientation = 'vertical') {
+function useSmartTooltipPosition(parentRef, isVisible, orientation = 'vertical') {
   const [position, setPosition] = useState(null)
 
   useEffect(() => {
-    if (!isVisible || !tooltipRef.current) {
+    if (!isVisible || !parentRef.current) {
       setPosition(null)
       return
     }
 
-    const measureTooltip = () => {
-      if (!tooltipRef.current) return
-      const rect = tooltipRef.current.getBoundingClientRect()
+    // Measure the parent element to determine best position
+    const parentRect = parentRef.current.getBoundingClientRect()
 
-      if (orientation === 'vertical') {
-        // For above/below tooltips
-        // 'top' = position below, 'bottom' = position above
-        if (rect.top < 0) {
-          // Tooltip going off top of screen, position it below instead
-          setPosition('top')
-        } else if (rect.bottom > window.innerHeight) {
-          // Tooltip going off bottom of screen, position it above instead
-          setPosition('bottom')
-        } else {
-          setPosition(null) // Use default
-        }
-      } else if (orientation === 'horizontal') {
-        // For left/right tooltips
-        // 'left' = position right, 'right' = position left
-        if (rect.left < 0) {
-          // Tooltip going off left edge, position it right instead
-          setPosition('left')
-        } else if (rect.right > window.innerWidth) {
-          // Tooltip going off right edge, position it left instead
-          setPosition('right')
-        } else {
-          setPosition(null) // Use default
-        }
+    if (orientation === 'vertical') {
+      // For above/below tooltips
+      // Calculate available space
+      const spaceAbove = parentRect.top
+      const spaceBelow = window.innerHeight - parentRect.bottom
+
+      // Assume tooltip is ~30px tall + 6px gap
+      const minSpace = 36
+
+      // If not enough space below, position above
+      if (spaceBelow < minSpace && spaceAbove >= minSpace) {
+        setPosition('bottom') // position above
+      } else {
+        setPosition('top') // position below (default)
+      }
+    } else if (orientation === 'horizontal') {
+      // For left/right tooltips
+      // Calculate available space
+      const spaceLeft = parentRect.left
+      const spaceRight = window.innerWidth - parentRect.right
+
+      // Assume tooltip is ~120px wide + 8px gap
+      const minSpace = 128
+
+      // If not enough space right, position left
+      if (spaceRight < minSpace && spaceLeft >= minSpace) {
+        setPosition('right') // position left
+      } else {
+        setPosition('left') // position right (default)
       }
     }
-
-    // Measure immediately
-    measureTooltip()
-
-    // Also measure after a frame to catch layout shifts
-    const frameId = requestAnimationFrame(measureTooltip)
-    return () => cancelAnimationFrame(frameId)
-  }, [isVisible, tooltipRef, orientation])
+  }, [isVisible, parentRef, orientation])
 
   return position
 }
 
 function StopTick({ left, top: topProp, stopName, onTop }) {
   const [showTooltip, setShowTooltip] = useState(false)
-  const tooltipRef = useRef(null)
+  const parentRef = useRef(null)
   // topProp takes precedence; otherwise derive from onTop
   const isTop = onTop === true
   const isBottom = onTop === false
   const resolvedTop = topProp !== undefined ? topProp : (isTop ? '1px' : isBottom ? 'calc(100% - 1px)' : '50%')
 
   // Determine default position (above for top ticks, below for bottom ticks)
-  const defaultPos = isTop ? 'bottom' : 'top'
-  const adjustedPos = useSmartTooltipPosition(tooltipRef, showTooltip, 'vertical') || defaultPos
+  const adjustedPos = useSmartTooltipPosition(parentRef, showTooltip, 'vertical')
 
   const tooltipStyle = {
     left: '50%',
     transform: 'translateX(-50%)',
-    ...(adjustedPos === 'top' ? { top: 'calc(100% + 6px)' } : { bottom: 'calc(100% + 6px)' }),
+    ...(adjustedPos === 'bottom' ? { bottom: 'calc(100% + 6px)' } : { top: 'calc(100% + 6px)' }),
   }
 
   return (
     <div
+      ref={parentRef}
       className="absolute cursor-pointer"
       style={{
         left,
@@ -345,7 +342,6 @@ function StopTick({ left, top: topProp, stopName, onTop }) {
     >
       {showTooltip && (
         <div
-          ref={tooltipRef}
           className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap"
           style={{...tooltipStyle, zIndex: 9999}}
         >
@@ -375,7 +371,7 @@ function NearbyStopMarker({ left }) {
 
 function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, nextArrivalTime }) {
   const [hovered, setHovered] = useState(false)
-  const tooltipRef = useRef(null)
+  const parentRef = useRef(null)
   let nextMins = null
   if (nextArrivalTime) {
     const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
@@ -383,12 +379,12 @@ function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, next
   }
   const trackTop = movingRight ? '-1px' : 'calc(100% + 1px)'
 
-  // Determine default position (above for top-track buses, below for bottom-track)
-  const defaultPos = movingRight ? 'bottom' : 'top'
-  const adjustedPos = useSmartTooltipPosition(tooltipRef, hovered, 'vertical') || defaultPos
+  // Determine position (above for top-track buses, below for bottom-track by default)
+  const adjustedPos = useSmartTooltipPosition(parentRef, hovered, 'vertical')
 
   return (
     <div
+      ref={parentRef}
       className="absolute flex items-center justify-center cursor-pointer"
       style={{ left, top: trackTop, width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
       onMouseEnter={() => setHovered(true)}
@@ -396,13 +392,12 @@ function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, next
     >
       {hovered && (
         <div
-          ref={tooltipRef}
           className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap space-y-0.5 pointer-events-none"
           style={{
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 9999,
-            ...(adjustedPos === 'top' ? { top: 'calc(100% + 4px)' } : { bottom: 'calc(100% + 4px)' }),
+            ...(adjustedPos === 'bottom' ? { bottom: 'calc(100% + 4px)' } : { top: 'calc(100% + 4px)' }),
           }}
         >
           <div className="font-bold">{lineRef} → {destination}</div>
@@ -432,7 +427,7 @@ function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, next
 
 function VerticalStopTick({ top, side, stopName, leftOverride }) {
   const [showTooltip, setShowTooltip] = useState(false)
-  const tooltipRef = useRef(null)
+  const parentRef = useRef(null)
 
   const posStyle = side === 'left'
     ? { top, left: '1px', transform: 'translate(-50%, -50%)' }
@@ -440,18 +435,18 @@ function VerticalStopTick({ top, side, stopName, leftOverride }) {
     ? { top, right: '1px', transform: 'translate(50%, -50%)' }
     : { top, left: leftOverride ?? '50%', transform: 'translate(-50%, -50%)' } // 'center' for terminus ends
 
-  // Determine default position based on side
-  const defaultPos = side === 'left' ? 'left' : 'right'
-  const adjustedPos = useSmartTooltipPosition(tooltipRef, showTooltip, 'horizontal') || defaultPos
+  // Determine position based on available space
+  const adjustedPos = useSmartTooltipPosition(parentRef, showTooltip, 'horizontal')
 
   const tooltipStyle = {
     top: '50%',
     transform: 'translateY(-50%)',
-    ...(adjustedPos === 'left' ? { right: 'calc(100% + 8px)' } : { left: 'calc(100% + 8px)' }),
+    ...(adjustedPos === 'right' ? { right: 'calc(100% + 8px)' } : { left: 'calc(100% + 8px)' }),
   }
 
   return (
     <div
+      ref={parentRef}
       className="absolute cursor-pointer"
       style={{
         ...posStyle,
@@ -467,7 +462,6 @@ function VerticalStopTick({ top, side, stopName, leftOverride }) {
     >
       {showTooltip && (
         <div
-          ref={tooltipRef}
           className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap"
           style={{...tooltipStyle, zIndex: 9999}}
         >
@@ -480,7 +474,7 @@ function VerticalStopTick({ top, side, stopName, leftOverride }) {
 
 function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop, nextArrivalTime }) {
   const [hovered, setHovered] = useState(false)
-  const tooltipRef = useRef(null)
+  const parentRef = useRef(null)
   let nextMins = null
   if (nextArrivalTime) {
     const m = Math.round((new Date(nextArrivalTime) - new Date()) / 60000)
@@ -489,12 +483,12 @@ function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop
   // Outbound (movingDown) → left track; return → right track
   const trackLeft = movingDown ? '-1px' : 'calc(100% + 1px)'
 
-  // Determine default position (right for outbound/left track, left for return/right track)
-  const defaultPos = movingDown ? 'right' : 'left'
-  const adjustedPos = useSmartTooltipPosition(tooltipRef, hovered, 'horizontal') || defaultPos
+  // Determine position based on available space
+  const adjustedPos = useSmartTooltipPosition(parentRef, hovered, 'horizontal')
 
   return (
     <div
+      ref={parentRef}
       className="absolute flex items-center justify-center cursor-pointer"
       style={{ top, left: trackLeft, width: '48px', height: '48px', transform: 'translate(-50%, -50%)', zIndex: 10 }}
       onMouseEnter={() => setHovered(true)}
@@ -502,13 +496,12 @@ function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop
     >
       {hovered && (
         <div
-          ref={tooltipRef}
           className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap space-y-0.5 pointer-events-none"
           style={{
             top: '50%',
             transform: 'translateY(-50%)',
             zIndex: 9999,
-            ...(adjustedPos === 'right' ? { right: 'calc(100% + 4px)' } : { left: 'calc(100% + 4px)' }),
+            ...(adjustedPos === 'left' ? { left: 'calc(100% + 4px)' } : { right: 'calc(100% + 4px)' }),
           }}
         >
           <div className="font-bold">{lineRef} → {destination}</div>
