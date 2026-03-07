@@ -330,8 +330,8 @@ function StopTick({ left, top: topProp, stopName, onTop }) {
       {showTooltip && (
         <div
           ref={tooltipRef}
-          className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
-          style={tooltipStyle}
+          className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap"
+          style={{...tooltipStyle, zIndex: 9999}}
         >
           {stopName}
         </div>
@@ -381,10 +381,11 @@ function BusDot({ left, delay, movingRight, lineRef, destination, nextStop, next
       {hovered && (
         <div
           ref={tooltipRef}
-          className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
+          className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap space-y-0.5 pointer-events-none"
           style={{
             left: '50%',
             transform: 'translateX(-50%)',
+            zIndex: 9999,
             ...(adjustedPos === 'top' ? { top: 'calc(100% + 4px)' } : { bottom: 'calc(100% + 4px)' }),
           }}
         >
@@ -451,8 +452,8 @@ function VerticalStopTick({ top, side, stopName, leftOverride }) {
       {showTooltip && (
         <div
           ref={tooltipRef}
-          className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-20"
-          style={tooltipStyle}
+          className="absolute bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap"
+          style={{...tooltipStyle, zIndex: 9999}}
         >
           {stopName}
         </div>
@@ -486,10 +487,11 @@ function VerticalBusDot({ top, movingDown, delay, lineRef, destination, nextStop
       {hovered && (
         <div
           ref={tooltipRef}
-          className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap z-20 space-y-0.5 pointer-events-none"
+          className="absolute bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 whitespace-nowrap space-y-0.5 pointer-events-none"
           style={{
             top: '50%',
             transform: 'translateY(-50%)',
+            zIndex: 9999,
             ...(adjustedPos === 'right' ? { right: 'calc(100% + 4px)' } : { left: 'calc(100% + 4px)' }),
           }}
         >
